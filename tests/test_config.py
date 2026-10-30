@@ -1,13 +1,16 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
-from platformdirs import user_documents_path
+from platformdirs import user_data_path, user_documents_path
 
 from ostra.config import (
     DEFAULT_CHUNK_OVERLAP_TOKENS,
     DEFAULT_CHUNK_SIZE_TOKENS,
+    DEFAULT_CONFIG_PATH,
     DEFAULT_DATABASE_PATH,
+    default_config_path,
     load_config,
 )
 from ostra.connectors.database_facade import DatabaseBackend
@@ -28,7 +31,7 @@ def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp
     load_config(config_path)
 
     assert json.loads(config_path.read_text()) == {
-        "database_path": "~/ostra/ostra.db",
+        "database_path": str(DEFAULT_DATABASE_PATH),
         "directories": [str(user_documents_path())],
         "database_backend": "sqlite",
         "chunk_size_tokens": 510,
@@ -36,6 +39,7 @@ def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp
     }
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission modes do not apply on Windows")
 def test_load_config__config_file_missing__creates_owner_only_directory_and_file(tmp_path: Path):
     """Create the config directory with mode 700 and the config file with mode 600."""
     config_path = tmp_path / "ostra" / "config.json"
@@ -124,8 +128,28 @@ def test_load_config__file_is_invalid_json__raises_value_error(tmp_path: Path):
         load_config(config_path)
 
 
-def test_default_database_path__module_constant__points_to_home_ostra_folder():
-    assert DEFAULT_DATABASE_PATH == Path.home() / "ostra" / "ostra.db"
+def test_default_database_path__module_constant__points_to_user_data_folder():
+    """Point the default database path to the ostra.db file in the user data folder."""
+    assert DEFAULT_DATABASE_PATH == user_data_path("ostra") / "ostra.db"
+
+
+def test_default_config_path__legacy_file_exists__returns_legacy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Return the legacy config path when a config file exists there, so an earlier install keeps its settings."""
+    legacy_path = tmp_path / "ostra" / "config.json"
+    legacy_path.parent.mkdir()
+    legacy_path.write_text("{}")
+    monkeypatch.setattr("ostra.config.LEGACY_CONFIG_PATH", legacy_path)
+
+    assert default_config_path() == legacy_path
+
+
+def test_default_config_path__legacy_file_missing__returns_user_config_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Return the config path in the user config folder when no legacy config file exists."""
+    monkeypatch.setattr("ostra.config.LEGACY_CONFIG_PATH", tmp_path / "missing" / "config.json")
+
+    assert default_config_path() == DEFAULT_CONFIG_PATH
 
 
 def test_load_config__chunk_settings_missing__returns_default_chunk_size_and_overlap(tmp_path: Path):

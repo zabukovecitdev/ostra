@@ -15,7 +15,7 @@ A local retrieval pipeline for personal text files. It splits each file into tok
 - **Local embeddings** through [Ollama](https://ollama.com), using `mxbai-embed-large` (1024 dimensions).
 - **Vector search** with cosine distance, from the command line.
 - **Two storage backends behind one interface:** SQLite with `sqlite-vec` (default) and Chroma. Switch with a flag or a config key.
-- **Owner-only file permissions** on the database, the config file and their folders.
+- **Owner-only file permissions** on the database, the config file and their folders. Linux and macOS apply these modes. On Windows they have no effect.
 
 ## Architecture
 
@@ -57,11 +57,11 @@ make search QUERY="solar system" LIMIT=3
 
 ## Configuration
 
-The config file is `~/ostra/config.json`. It is created with defaults on the first run.
+The config file is `config.json` in your user config folder, for example `~/.config/ostra/config.json` on Linux. It is created with defaults on the first run. An existing `~/ostra/config.json` from an earlier version is still used when it exists.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `database_path` | `~/ostra/ostra.db` | SQLite database. The Chroma store is a `chroma` folder beside it. |
+| `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. The Chroma store is a `chroma` folder beside it. |
 | `database_backend` | `sqlite` | `sqlite` or `chroma`. Chroma needs the extra: `pip install 'ostra[chroma]'` |
 | `directories` | your Documents folder | Folders to process. Only top-level `.txt`, `.md` and `.csv` files are read. |
 | `chunk_size_tokens` | `510` | Tokens per chunk. The model's 512-token input includes two special tokens. |

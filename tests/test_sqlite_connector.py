@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ import sqlite_vec
 from ostra.connectors.sqlite_connector import SqliteConnector, SqliteSettings
 
 LOGGER_NAME = "ostra.connectors.sqlite_connector"
+POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission modes do not apply on Windows")
 
 
 def test_ensure_database__database_missing__creates_file_in_missing_directory(tmp_path: Path):
@@ -80,6 +82,7 @@ def test_ensure_database__database_missing__logs_creation_with_path(tmp_path: Pa
     assert all(record.levelno == logging.INFO for record in caplog.records)
 
 
+@POSIX_ONLY
 def test_ensure_database__database_missing__creates_owner_only_directory_and_file(tmp_path: Path):
     """Create the directory with mode 700 and the database file with mode 600."""
     database_path = tmp_path / "outer" / "ostra.db"
@@ -91,6 +94,7 @@ def test_ensure_database__database_missing__creates_owner_only_directory_and_fil
     assert database_path.stat().st_mode & 0o777 == 0o600
 
 
+@POSIX_ONLY
 def test_ensure_database__database_exists_with_open_permissions__restricts_to_owner(tmp_path: Path):
     """Set mode 600 on an existing database file with open permissions."""
     database_path = tmp_path / "ostra.db"
