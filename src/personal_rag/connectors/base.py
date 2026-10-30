@@ -24,3 +24,52 @@ class VectorDatabaseConnector(ABC):
     @abstractmethod
     def migrate(self) -> None:
         """Apply the schema migrations that have not run yet."""
+
+    @abstractmethod
+    def save_file_digest(self, file_path: str, digest: str) -> None:
+        """Insert a file or update its digest and processed time.
+
+        Args:
+            file_path: Location of the file.
+            digest: SHA-256 hex digest of the file content.
+        """
+
+    @abstractmethod
+    def get_file_digest(self, file_path: str) -> str | None:
+        """Return the stored digest of one file.
+
+        Args:
+            file_path: Location of the file.
+
+        Returns:
+            The SHA-256 hex digest of the file content, or None when the file is not stored.
+        """
+
+    @abstractmethod
+    def get_chunk_digests(self, file_path: str) -> set[str]:
+        """Return the stored chunk digests of one file.
+
+        Args:
+            file_path: Location of the file.
+
+        Returns:
+            The SHA-256 hex digests of the chunks that were processed.
+        """
+
+    @abstractmethod
+    def save_chunk_digest(self, file_path: str, digest: str) -> None:
+        """Insert a chunk digest or update the processed time of a stored digest.
+
+        Args:
+            file_path: Location of the file.
+            digest: SHA-256 hex digest of the chunk.
+        """
+
+    @abstractmethod
+    def delete_chunk_digests(self, file_path: str, digests: set[str]) -> None:
+        """Delete the stored chunk digests that the file no longer has.
+
+        Args:
+            file_path: Location of the file.
+            digests: SHA-256 hex digests to delete.
+        """

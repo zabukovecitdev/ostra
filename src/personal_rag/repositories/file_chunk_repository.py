@@ -16,9 +16,7 @@ class FileChunkRepository:
         Returns:
             The SHA-256 hex digests of the lines that were processed.
         """
-        connection = self._connector.connect()
-        rows = connection.execute("SELECT digest FROM file_chunks WHERE file_path = ?", (file_path,)).fetchall()
-        return {row[0] for row in rows}
+        return self._connector.get_chunk_digests(file_path=file_path)
 
     def save_chunk(self, file_path: str, digest: str) -> None:
         """Insert a line digest or update the processed time of a stored digest.
@@ -27,13 +25,7 @@ class FileChunkRepository:
             file_path: Location of the file.
             digest: SHA-256 hex digest of the line.
         """
-        connection = self._connector.connect()
-        connection.execute(
-            "INSERT INTO file_chunks (file_path, digest) VALUES (?, ?) "
-            "ON CONFLICT (file_path, digest) DO UPDATE SET processed_at = CURRENT_TIMESTAMP",
-            (file_path, digest),
-        )
-        connection.commit()
+        self._connector.save_chunk_digest(file_path=file_path, digest=digest)
 
     def delete_chunks(self, file_path: str, digests: set[str]) -> None:
         """Delete the stored digests that the file no longer has.
@@ -42,9 +34,4 @@ class FileChunkRepository:
             file_path: Location of the file.
             digests: SHA-256 hex digests to delete.
         """
-        connection = self._connector.connect()
-        connection.executemany(
-            "DELETE FROM file_chunks WHERE file_path = ? AND digest = ?",
-            [(file_path, digest) for digest in digests],
-        )
-        connection.commit()
+        self._connector.delete_chunk_digests(file_path=file_path, digests=digests)

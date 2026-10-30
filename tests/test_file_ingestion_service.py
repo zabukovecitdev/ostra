@@ -2,25 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from personal_rag.connectors.sqlite_connector import SqliteConnector, SqliteSettings
+from personal_rag.connectors.base import VectorDatabaseConnector
 from personal_rag.hashing import hash_file, hash_line
 from personal_rag.repositories.file_chunk_repository import FileChunkRepository
 from personal_rag.repositories.file_repository import FileRepository
-from personal_rag.services.database_service import DatabaseService
 from personal_rag.services.file_ingestion_service import FileIngestionService
 from personal_rag.services.file_service import FileService
 
 
-@pytest.fixture
-def connector(tmp_path: Path):
-    """Provide an initialized SQLite connector and close it after the test."""
-    sqlite_connector = SqliteConnector(SqliteSettings(path=tmp_path / "personal_rag.db"))
-    DatabaseService(connector=sqlite_connector).initialize()
-    yield sqlite_connector
-    sqlite_connector.close()
-
-
-def make_service(connector: SqliteConnector, directory: Path) -> FileIngestionService:
+def make_service(connector: VectorDatabaseConnector, directory: Path) -> FileIngestionService:
     """Build an ingestion service that reads one directory and stores results through the connector."""
     return FileIngestionService(
         file_service=FileService(directories=[directory]),
@@ -29,10 +19,9 @@ def make_service(connector: SqliteConnector, directory: Path) -> FileIngestionSe
     )
 
 
-def stored_chunks(connector: SqliteConnector, file_path: Path) -> set[str]:
+def stored_chunks(connector: VectorDatabaseConnector, file_path: Path) -> set[str]:
     """Return the stored line digests of one file."""
-    rows = connector.connect().execute("SELECT digest FROM file_chunks WHERE file_path = ?", (str(file_path),))
-    return {row[0] for row in rows.fetchall()}
+    return connector.get_chunk_digests(str(file_path))
 
 
 def test_process_files__new_file__prints_each_line(connector, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
@@ -50,9 +39,8 @@ def test_process_files__new_file__saves_file_digest(connector, tmp_path: Path):
     file_path.write_text("alpha\nbeta\n")
 
     make_service(connector, tmp_path).process_files()
-    rows = connector.connect().execute("SELECT file_path, digest FROM files").fetchall()
 
-    assert rows == [(str(file_path), hash_file(file_path))]
+    assert connector.get_file_digest(str(file_path)) == hash_file(file_path)
 
 
 def test_process_files__new_file__saves_digest_of_each_line(connector, tmp_path: Path):
@@ -147,6 +135,5 @@ def test_process_files__file_changed__updates_stored_file_digest(connector, tmp_
     file_path.write_text("alpha\nbeta\n")
 
     service.process_files()
-    rows = connector.connect().execute("SELECT digest FROM files").fetchall()
 
-    assert rows == [(hash_file(file_path),)]
+    assert connector.get_file_digest(str(file_path)) == hash_file(file_path)

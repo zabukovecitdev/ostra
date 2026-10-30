@@ -14,10 +14,15 @@ class FileRepository:
             file_path: Location of the file.
             digest: SHA-256 hex digest of the file content.
         """
-        connection = self._connector.connect()
-        connection.execute(
-            "INSERT INTO files (file_path, digest) VALUES (?, ?) "
-            "ON CONFLICT (file_path) DO UPDATE SET digest = excluded.digest, processed_at = CURRENT_TIMESTAMP",
-            (file_path, digest),
-        )
-        connection.commit()
+        self._connector.save_file_digest(file_path=file_path, digest=digest)
+
+    def get_digest(self, file_path: str) -> str | None:
+        """Return the stored digest of one file.
+
+        Args:
+            file_path: Location of the file.
+
+        Returns:
+            The SHA-256 hex digest of the file content, or None when the file is not stored.
+        """
+        return self._connector.get_file_digest(file_path=file_path)
