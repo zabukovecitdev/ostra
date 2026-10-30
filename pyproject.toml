@@ -9,6 +9,7 @@ dependencies = [
     "platformdirs>=4.14.0",
     "pydantic-settings>=2.16.2",
     "sqlite-vec>=0.1.9",
+    "tokenizers>=0.23.3",
 ]
 
 [project.scripts]

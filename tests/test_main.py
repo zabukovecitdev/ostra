@@ -46,7 +46,7 @@ def test_main__directories_have_files__prints_each_line(
 
     main.main([])
 
-    assert capsys.readouterr().out.splitlines()[1:] == ["alpha", "beta"]
+    assert capsys.readouterr().out.splitlines()[1:] == ["alpha beta"]
 
 
 def test_main__reindex_flag__prints_lines_of_unchanged_file_again(

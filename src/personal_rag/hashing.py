@@ -15,13 +15,13 @@ def hash_file(file_path: Path) -> str:
         return hashlib.file_digest(file, "sha256").hexdigest()
 
 
-def hash_line(line: str) -> str:
-    """Return the SHA-256 hex digest of one line encoded as UTF-8.
+def hash_text(text: str) -> str:
+    """Return the SHA-256 hex digest of text encoded as UTF-8.
 
     Args:
-        line: The line of text to hash, including its line ending.
+        text: The text to hash.
 
     Returns:
-        The SHA-256 hex digest of the line.
+        The SHA-256 hex digest of the text.
     """
-    return hashlib.sha256(line.encode("utf-8")).hexdigest()
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()

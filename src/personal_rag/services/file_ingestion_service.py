@@ -1,24 +1,27 @@
 from pathlib import Path
 
-from personal_rag.hashing import hash_file, hash_line
+from personal_rag.hashing import hash_file, hash_text
 from personal_rag.repositories.file_chunk_repository import FileChunkRepository
 from personal_rag.repositories.file_repository import FileRepository
 from personal_rag.services.file_service import FileService
+from personal_rag.services.text_chunker import TextChunker
 
 
 class FileIngestionService:
-    """Process the text files and skip the lines that a previous run already processed."""
+    """Process the text files in chunks and skip the chunks that a previous run already processed."""
 
     def __init__(
         self,
         file_service: FileService,
         file_repository: FileRepository,
         file_chunk_repository: FileChunkRepository,
+        chunker: TextChunker,
         reindex: bool,
     ):
         self._file_service = file_service
         self._file_repository = file_repository
         self._file_chunk_repository = file_chunk_repository
+        self._chunker = chunker
         self._reindex = reindex
 
     def process_files(self) -> None:
@@ -27,12 +30,12 @@ class FileIngestionService:
             self._process_file(file_path)
 
     def _process_file(self, file_path: Path) -> None:
-        """Save the file digest, then process each line whose digest is not stored.
+        """Save the file digest, then process each chunk whose digest is not stored.
 
-        A line is skipped when its digest is stored for the file, whatever its line number.
-        When reindex is set, no stored digest is skipped, so every line is processed again.
-        Save the digest of each processed line after the line is processed. Delete the stored digests that
-        no line of the file has. Process the line by printing it.
+        A chunk is skipped when its digest is stored for the file, whatever its position.
+        When reindex is set, no stored digest is skipped, so every chunk is processed again.
+        Save the digest of each processed chunk after the chunk is processed. Delete the stored digests that
+        no chunk of the file has. Process the chunk by printing it.
 
         Args:
             file_path: Location of the file to process.
@@ -43,14 +46,14 @@ class FileIngestionService:
         stored_digests = self._file_chunk_repository.get_digests(file_key)
         skipped_digests = set() if self._reindex else set(stored_digests)
         current_digests = set()
-        for line in self._file_service.stream_lines(file_path):
-            line_digest = hash_line(line)
-            current_digests.add(line_digest)
-            if line_digest in skipped_digests:
+        for chunk in self._chunker.stream_chunks(self._file_service.stream_words(file_path)):
+            chunk_digest = hash_text(chunk)
+            current_digests.add(chunk_digest)
+            if chunk_digest in skipped_digests:
                 continue
 
-            print(line.rstrip("\n"))
-            self._file_chunk_repository.save_chunk(file_key, line_digest)
-            skipped_digests.add(line_digest)
+            print(chunk)
+            self._file_chunk_repository.save_chunk(file_key, chunk_digest)
+            skipped_digests.add(chunk_digest)
 
         self._file_chunk_repository.delete_chunks(file_key, stored_digests - current_digests)

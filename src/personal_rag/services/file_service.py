@@ -31,6 +31,18 @@ class FileService:
                 if _is_text_file(file_path):
                     yield file_path
 
+    def stream_words(self, file_path: Path) -> Iterator[str]:
+        """Yield each whitespace-separated word of one file in reading order.
+
+        Args:
+            file_path: Location of the file to read.
+
+        Yields:
+            One word of text.
+        """
+        for line in self.stream_lines(file_path):
+            yield from line.split()
+
     def stream_lines(self, file_path: Path) -> Iterator[str]:
         """Yield each line of one file without reading the whole file into memory.
 

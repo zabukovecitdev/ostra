@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 from platformdirs import user_documents_path
 
-from personal_rag.config import DEFAULT_DATABASE_PATH, load_config
+from personal_rag.config import (
+    DEFAULT_CHUNK_OVERLAP_TOKENS,
+    DEFAULT_CHUNK_SIZE_TOKENS,
+    DEFAULT_DATABASE_PATH,
+    load_config,
+)
 
 
 def test_load_config__config_file_missing__returns_default_settings(tmp_path: Path):
@@ -24,6 +29,8 @@ def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp
     assert json.loads(config_path.read_text()) == {
         "database_path": "~/personal-rag/personal_rag.db",
         "directories": [str(user_documents_path())],
+        "chunk_size_tokens": 510,
+        "chunk_overlap_tokens": 50,
     }
 
 
@@ -117,3 +124,35 @@ def test_load_config__file_is_invalid_json__raises_value_error(tmp_path: Path):
 
 def test_default_database_path__module_constant__points_to_home_personal_rag_folder():
     assert DEFAULT_DATABASE_PATH == Path.home() / "personal-rag" / "personal_rag.db"
+
+
+def test_load_config__chunk_settings_missing__returns_default_chunk_size_and_overlap(tmp_path: Path):
+    """Return a chunk size of 510 tokens and an overlap of 50 tokens when the config file has no chunk keys."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}")
+
+    config = load_config(config_path)
+
+    assert config.chunk_size_tokens == DEFAULT_CHUNK_SIZE_TOKENS == 510
+    assert config.chunk_overlap_tokens == DEFAULT_CHUNK_OVERLAP_TOKENS == 50
+
+
+def test_load_config__chunk_settings_set__returns_configured_values(tmp_path: Path):
+    """Return the chunk size and overlap that the config file sets."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"chunk_size_tokens": 800, "chunk_overlap_tokens": 100}')
+
+    config = load_config(config_path)
+
+    assert config.chunk_size_tokens == 800
+    assert config.chunk_overlap_tokens == 100
+
+
+@pytest.mark.parametrize("value", ['"800"', "1.5", "true"])
+def test_load_config__chunk_size_not_an_integer__raises_value_error(tmp_path: Path, value: str):
+    """Raise ValueError when the chunk size is not an integer."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(f'{{"chunk_size_tokens": {value}}}')
+
+    with pytest.raises(ValueError, match="chunk_size_tokens must be an integer"):
+        load_config(config_path)
