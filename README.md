@@ -1,0 +1,136 @@
+# ostra
+
+A local retrieval pipeline for personal text files. It splits each file into token-sized chunks, embeds every chunk with a local model, stores the vectors, and returns the closest chunks for a query. Everything runs on your machine. No text leaves it.
+
+## Features
+
+- **Token-based chunking** with configurable size and overlap. Token counts come from the embedding model's own tokenizer, so each chunk fits the model's input limit.
+- **Resumable ingestion.** Each chunk is stored under its content digest. A rerun skips chunks that are already embedded, so an interrupted run continues where it stopped.
+- **Local embeddings** through [Ollama](https://ollama.com), using `mxbai-embed-large` (1024 dimensions).
+- **Vector search** with cosine distance, from the command line.
+- **Two storage backends behind one interface:** SQLite with `sqlite-vec` (default) and Chroma. Switch with a flag or a config key.
+- **Owner-only file permissions** on the database, the config file and their folders.
+
+## Architecture
+
+```
+main.py                    command line entry point and wiring
+├── services/              ingestion, chunking, search, file discovery
+├── repositories/          domain operations on stored files and chunks
+├── connectors/            storage contract and its backends
+│   ├── base.py            VectorDatabaseConnector (abstract)
+│   ├── sqlite_connector.py  SQLite + sqlite-vec, versioned migrations
+│   ├── chroma_connector.py  Chroma persistent client
+│   └── database_facade.py   picks the backend from configuration
+├── embeddings/            EmbeddingProvider (abstract) and the Ollama implementation
+├── tokenization/          Tokenizer (abstract) and the mxbai implementation
+└── models/                EmbeddingModel (abstract) pairs a provider with its tokenizer
+```
+
+The layers depend on abstract classes, so a new embedding model or storage backend means one new class and a change in one place. Replacing `mxbai-embed-large` with another model takes a subclass of `EmbeddingModel`, plus a `Tokenizer` if the new model uses a different tokenizer.
+
+## Requirements
+
+- Python 3.14
+- [uv](https://docs.astral.sh/uv/)
+- [Ollama](https://ollama.com) running locally, with the embedding model pulled:
+
+  ```bash
+  ollama pull mxbai-embed-large
+  ```
+
+- `make` (optional, for the shortcuts below)
+
+## Quick start
+
+```bash
+uv sync
+make run                      # process the configured folders
+make search QUERY="solar system" LIMIT=3
+```
+
+## Configuration
+
+The config file is `~/ostra/config.json`. It is created with defaults on the first run.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `database_path` | `~/ostra/ostra.db` | SQLite database. The Chroma store is a `chroma` folder beside it. |
+| `database_backend` | `sqlite` | `sqlite` or `chroma` |
+| `directories` | your Documents folder | Folders to process. Only top-level `.txt`, `.md` and `.csv` files are read. |
+| `chunk_size_tokens` | `510` | Tokens per chunk. The model's 512-token input includes two special tokens. |
+| `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
+
+The Ollama server and model come from environment variables:
+
+| Variable | Default |
+|---|---|
+| `OLLAMA_BASE_URL` | `http://localhost:11434` |
+| `OLLAMA_MODEL` | `mxbai-embed-large:latest` |
+
+## Usage
+
+| Command | Effect |
+|---|---|
+| `ostra index` | Embed and store the new or changed chunks of the configured folders |
+| `ostra index --directory PATH` | Index one or more folders instead of the configured ones. Repeat the option for more folders. |
+| `ostra index --reindex` | Embed every chunk again, even those already stored |
+| `ostra search "query" --limit 5` | Print the chunks closest to the query |
+| `ostra --database chroma index` | Use the Chroma backend for this run. The option also works after the command name. |
+
+Run `ostra --help` or `ostra index --help` for the full list of options.
+
+Makefile shortcuts:
+
+```bash
+make run DIRECTORY=~/Documents/notes
+make reindex
+make search QUERY="transformer attention" LIMIT=3
+make check            # lint, format check and tests
+make help             # list every target
+```
+
+## Testing
+
+```bash
+make test
+```
+
+The suite runs 161 tests. The storage contract tests and the ingestion tests run once for each backend. The tests do not call Ollama: they use a fake embedding model and a local tokenizer file.
+
+## Performance
+
+Measured on the development machine with a local Ollama server:
+
+| Measure | Result |
+|---|---|
+| Embedding one full-size chunk (510 tokens) | median 115 ms |
+| Embedding and storing 1 MB of text (408 chunks) | 48 s |
+| Reindex of a 440 KB novel (243 chunks), SQLite / Chroma | 28 s / 31 s |
+| Search, SQLite / Chroma | 1.4 ms / 2.9 ms (query embedding adds about 25 ms) |
+
+More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
+
+## Known limitations
+
+- Only top-level files are read. Subfolders are skipped.
+- Only plain text formats are read. PDF and Office files are skipped.
+- A moved file is embedded again, and the rows of deleted files are not removed. See [docs/issues/moved-and-deleted-files.md](docs/issues/moved-and-deleted-files.md).
+- The vector size is fixed by the migration (1024). A model with another size needs a new migration.
+- The chunk digests are SHA-256 of the chunk text. Identical text in two files is stored once per file path.
+
+## Project layout
+
+```
+src/ostra/   application code
+tests/              pytest suite and sample text files (tests/data)
+reports/            performance measurements
+docs/issues/        tracked issues with analysis
+```
+
+## Roadmap (planned)
+
+- Move detection and cleanup for moved and deleted files
+- Recursive folder scanning with an option to turn it on
+- Answer generation that cites the source file of each chunk
+- A content-addressed chunk store that shares vectors between identical text

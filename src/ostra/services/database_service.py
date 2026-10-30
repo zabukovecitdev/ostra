@@ -1,4 +1,4 @@
-from personal_rag.connectors.base import VectorDatabaseConnector
+from ostra.connectors.base import VectorDatabaseConnector
 
 
 class DatabaseService:

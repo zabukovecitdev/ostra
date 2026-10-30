@@ -1,11 +1,11 @@
 import pytest
 
-from personal_rag.embeddings.base import EmbeddingProvider
-from personal_rag.embeddings.ollama_embedding_provider import OllamaSettings
-from personal_rag.models.base import EmbeddingModel
-from personal_rag.models.mxbai_embedding_model import MxbaiEmbeddingModel
-from personal_rag.tokenization.base import Tokenizer
-from personal_rag.tokenization.mxbai_tokenizer import MxbaiTokenizer
+from ostra.embeddings.base import EmbeddingProvider
+from ostra.embeddings.ollama_embedding_provider import OllamaSettings
+from ostra.models.base import EmbeddingModel
+from ostra.models.mxbai_embedding_model import MxbaiEmbeddingModel
+from ostra.tokenization.base import Tokenizer
+from ostra.tokenization.mxbai_tokenizer import MxbaiTokenizer
 
 
 def test_embedding_model__instantiated_directly__raises_type_error():

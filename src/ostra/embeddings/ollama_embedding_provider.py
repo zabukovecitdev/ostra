@@ -1,7 +1,7 @@
 from ollama import Client
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from personal_rag.embeddings.base import EmbeddingProvider
+from ostra.embeddings.base import EmbeddingProvider
 
 
 class OllamaSettings(BaseSettings):

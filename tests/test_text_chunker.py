@@ -1,6 +1,6 @@
 import pytest
 
-from personal_rag.services.text_chunker import TextChunker
+from ostra.services.text_chunker import TextChunker
 
 
 def one_token_per_word(word: str) -> int:

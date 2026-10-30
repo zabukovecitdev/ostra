@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-from personal_rag.embeddings.base import EmbeddingProvider
-from personal_rag.tokenization.base import Tokenizer
+from ostra.embeddings.base import EmbeddingProvider
+from ostra.tokenization.base import Tokenizer
 
 
 class EmbeddingModel(ABC):

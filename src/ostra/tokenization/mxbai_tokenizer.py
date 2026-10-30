@@ -3,10 +3,10 @@ from pathlib import Path
 
 from tokenizers import Tokenizer as HuggingFaceTokenizer
 
-from personal_rag.tokenization.base import Tokenizer
+from ostra.tokenization.base import Tokenizer
 
 BUNDLED_MXBAI_TOKENIZER_PATH = Path(
-    str(resources.files("personal_rag.tokenization") / "data" / "mxbai-embed-large-v1" / "tokenizer.json")
+    str(resources.files("ostra.tokenization") / "data" / "mxbai-embed-large-v1" / "tokenizer.json")
 )
 
 

@@ -4,17 +4,18 @@ from pathlib import Path
 import pytest
 from platformdirs import user_documents_path
 
-from personal_rag.config import (
+from ostra.config import (
     DEFAULT_CHUNK_OVERLAP_TOKENS,
     DEFAULT_CHUNK_SIZE_TOKENS,
     DEFAULT_DATABASE_PATH,
     load_config,
 )
+from ostra.connectors.database_facade import DatabaseBackend
 
 
 def test_load_config__config_file_missing__returns_default_settings(tmp_path: Path):
     """Return the default database path and the Documents directory when the config file does not exist."""
-    config = load_config(tmp_path / "personal-rag" / "config.json")
+    config = load_config(tmp_path / "ostra" / "config.json")
 
     assert config.database_path == DEFAULT_DATABASE_PATH
     assert config.directories == [user_documents_path()]
@@ -22,13 +23,14 @@ def test_load_config__config_file_missing__returns_default_settings(tmp_path: Pa
 
 def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp_path: Path):
     """Create the config file with the default database path and the Documents directory."""
-    config_path = tmp_path / "personal-rag" / "config.json"
+    config_path = tmp_path / "ostra" / "config.json"
 
     load_config(config_path)
 
     assert json.loads(config_path.read_text()) == {
-        "database_path": "~/personal-rag/personal_rag.db",
+        "database_path": "~/ostra/ostra.db",
         "directories": [str(user_documents_path())],
+        "database_backend": "sqlite",
         "chunk_size_tokens": 510,
         "chunk_overlap_tokens": 50,
     }
@@ -36,7 +38,7 @@ def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp
 
 def test_load_config__config_file_missing__creates_owner_only_directory_and_file(tmp_path: Path):
     """Create the config directory with mode 700 and the config file with mode 600."""
-    config_path = tmp_path / "personal-rag" / "config.json"
+    config_path = tmp_path / "ostra" / "config.json"
 
     load_config(config_path)
 
@@ -122,8 +124,8 @@ def test_load_config__file_is_invalid_json__raises_value_error(tmp_path: Path):
         load_config(config_path)
 
 
-def test_default_database_path__module_constant__points_to_home_personal_rag_folder():
-    assert DEFAULT_DATABASE_PATH == Path.home() / "personal-rag" / "personal_rag.db"
+def test_default_database_path__module_constant__points_to_home_ostra_folder():
+    assert DEFAULT_DATABASE_PATH == Path.home() / "ostra" / "ostra.db"
 
 
 def test_load_config__chunk_settings_missing__returns_default_chunk_size_and_overlap(tmp_path: Path):
@@ -155,4 +157,29 @@ def test_load_config__chunk_size_not_an_integer__raises_value_error(tmp_path: Pa
     config_path.write_text(f'{{"chunk_size_tokens": {value}}}')
 
     with pytest.raises(ValueError, match="chunk_size_tokens must be an integer"):
+        load_config(config_path)
+
+
+def test_load_config__backend_key_missing__returns_sqlite_backend(tmp_path: Path):
+    """Return the SQLite backend when the config file has no database_backend key."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}")
+
+    assert load_config(config_path).database_backend is DatabaseBackend.SQLITE
+
+
+def test_load_config__backend_set_to_chroma__returns_chroma_backend(tmp_path: Path):
+    """Return the Chroma backend that the config file sets."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"database_backend": "chroma"}')
+
+    assert load_config(config_path).database_backend is DatabaseBackend.CHROMA
+
+
+def test_load_config__backend_not_supported__raises_value_error(tmp_path: Path):
+    """Raise ValueError when the config file names a backend that is not supported."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"database_backend": "postgres"}')
+
+    with pytest.raises(ValueError, match="database_backend must be one of sqlite, chroma"):
         load_config(config_path)

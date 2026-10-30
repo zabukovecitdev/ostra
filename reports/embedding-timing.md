@@ -5,7 +5,7 @@ Tokenizer: `mixedbread-ai/mxbai-embed-large-v1`. Chunks: 510 tokens, 50 tokens o
 
 ## 1. App run on `~/Documents`
 
-Command: `uv run personal-rag`
+Command: `uv run ostra`
 
 | Item | Value |
 |---|---|

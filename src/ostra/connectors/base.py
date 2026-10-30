@@ -79,6 +79,18 @@ class VectorDatabaseConnector(ABC):
         """
 
     @abstractmethod
+    def get_chunk_embedding(self, file_path: str, digest: str) -> list[float] | None:
+        """Return the stored embedding of one chunk.
+
+        Args:
+            file_path: Location of the file.
+            digest: SHA-256 hex digest of the chunk.
+
+        Returns:
+            The embedding vector of the chunk, or None when the chunk is not stored.
+        """
+
+    @abstractmethod
     def search_chunks(self, query_embedding: list[float], limit: int) -> list[ChunkMatch]:
         """Return the stored chunks that are closest to a query vector.
 

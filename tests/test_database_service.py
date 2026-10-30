@@ -1,7 +1,7 @@
 from unittest.mock import call, create_autospec
 
-from personal_rag.connectors.base import VectorDatabaseConnector
-from personal_rag.services.database_service import DatabaseService
+from ostra.connectors.base import VectorDatabaseConnector
+from ostra.services.database_service import DatabaseService
 
 
 def test_initialize__connector_given__calls_ensure_database_once():

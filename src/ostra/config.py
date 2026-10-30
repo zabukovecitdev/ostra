@@ -6,10 +6,13 @@ from pathlib import Path
 
 from platformdirs import user_documents_path
 
-CONFIG_PATH = Path.home() / "personal-rag" / "config.json"
-DEFAULT_DATABASE_PATH_TEXT = "~/personal-rag/personal_rag.db"
+from ostra.connectors.database_facade import DatabaseBackend
+
+CONFIG_PATH = Path.home() / "ostra" / "config.json"
+DEFAULT_DATABASE_PATH_TEXT = "~/ostra/ostra.db"
 DEFAULT_DATABASE_PATH = Path(DEFAULT_DATABASE_PATH_TEXT).expanduser()
 # The model accepts 512 tokens. Two of them are the special tokens [CLS] and [SEP].
+DEFAULT_DATABASE_BACKEND = DatabaseBackend.SQLITE
 DEFAULT_CHUNK_SIZE_TOKENS = 510
 DEFAULT_CHUNK_OVERLAP_TOKENS = 50
 OWNER_ONLY_DIRECTORY_MODE = 0o700
@@ -33,6 +36,7 @@ class AppConfig:
 
     database_path: Path
     directories: list[Path] = field(default_factory=default_directories)
+    database_backend: DatabaseBackend = DEFAULT_DATABASE_BACKEND
     chunk_size_tokens: int = DEFAULT_CHUNK_SIZE_TOKENS
     chunk_overlap_tokens: int = DEFAULT_CHUNK_OVERLAP_TOKENS
 
@@ -55,7 +59,11 @@ def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
     if not config_path.exists():
         logger.info("Config file not found. Creating it. Path=%s", config_path)
         _write_default_config(config_path)
-        return AppConfig(database_path=DEFAULT_DATABASE_PATH, directories=default_directories())
+        return AppConfig(
+            database_path=DEFAULT_DATABASE_PATH,
+            directories=default_directories(),
+            database_backend=DEFAULT_DATABASE_BACKEND,
+        )
 
     try:
         raw_config = json.loads(config_path.read_text())
@@ -70,12 +78,33 @@ def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
     directories = [Path(raw_directory).expanduser() for raw_directory in raw_directories]
     chunk_size_tokens = _read_int(raw_config, "chunk_size_tokens", DEFAULT_CHUNK_SIZE_TOKENS, config_path)
     chunk_overlap_tokens = _read_int(raw_config, "chunk_overlap_tokens", DEFAULT_CHUNK_OVERLAP_TOKENS, config_path)
+    database_backend = _read_database_backend(raw_config.get("database_backend", DEFAULT_DATABASE_BACKEND.value))
     return AppConfig(
         database_path=database_path,
         directories=directories,
+        database_backend=database_backend,
         chunk_size_tokens=chunk_size_tokens,
         chunk_overlap_tokens=chunk_overlap_tokens,
     )
+
+
+def _read_database_backend(raw_backend: str) -> DatabaseBackend:
+    """Convert the database_backend config value to a backend.
+
+    Args:
+        raw_backend: The value of the database_backend key.
+
+    Returns:
+        The database backend with that name.
+
+    Raises:
+        ValueError: When the value does not name a supported backend.
+    """
+    try:
+        return DatabaseBackend(raw_backend)
+    except ValueError as error:
+        supported = ", ".join(backend.value for backend in DatabaseBackend)
+        raise ValueError(f"Config key database_backend must be one of {supported}. Backend={raw_backend}") from error
 
 
 def _read_int(raw_config: dict, key: str, default: int, config_path: Path) -> int:
@@ -114,6 +143,7 @@ def _write_default_config(config_path: Path) -> None:
     default_config = {
         "database_path": DEFAULT_DATABASE_PATH_TEXT,
         "directories": [str(directory) for directory in default_directories()],
+        "database_backend": DEFAULT_DATABASE_BACKEND.value,
         "chunk_size_tokens": DEFAULT_CHUNK_SIZE_TOKENS,
         "chunk_overlap_tokens": DEFAULT_CHUNK_OVERLAP_TOKENS,
     }

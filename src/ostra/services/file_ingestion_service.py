@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from personal_rag.embeddings.base import EmbeddingProvider
-from personal_rag.hashing import hash_file, hash_text
-from personal_rag.repositories.file_chunk_repository import FileChunkRepository
-from personal_rag.repositories.file_repository import FileRepository
-from personal_rag.services.file_service import FileService
-from personal_rag.services.text_chunker import TextChunker
+from ostra.embeddings.base import EmbeddingProvider
+from ostra.hashing import hash_file, hash_text
+from ostra.repositories.file_chunk_repository import FileChunkRepository
+from ostra.repositories.file_repository import FileRepository
+from ostra.services.file_service import FileService
+from ostra.services.text_chunker import TextChunker
 
 
 class FileIngestionService:

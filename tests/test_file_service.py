@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from personal_rag.services.file_service import FileService
+from ostra.services.file_service import FileService
 
 
 def read_all_lines(service: FileService) -> list[str]:
@@ -57,7 +57,7 @@ def test_stream_files__directory_missing__skips_it_and_logs_warning(tmp_path: Pa
     missing = tmp_path / "missing"
     service = FileService(directories=[missing])
 
-    with caplog.at_level(logging.WARNING, logger="personal_rag.services.file_service"):
+    with caplog.at_level(logging.WARNING, logger="ostra.services.file_service"):
         files = list(service.stream_files())
 
     assert files == []

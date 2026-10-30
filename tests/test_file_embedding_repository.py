@@ -1,7 +1,7 @@
 from unittest.mock import create_autospec
 
-from personal_rag.connectors.base import VectorDatabaseConnector
-from personal_rag.repositories.file_embedding_repository import FileEmbeddingRepository
+from ostra.connectors.base import VectorDatabaseConnector
+from ostra.repositories.file_embedding_repository import FileEmbeddingRepository
 
 
 def test_open_connection__connector_injected__returns_connection_from_connector():

@@ -5,8 +5,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from personal_rag.embeddings.base import EmbeddingProvider
-from personal_rag.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider, OllamaSettings
+from ostra.embeddings.base import EmbeddingProvider
+from ostra.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider, OllamaSettings
 
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):

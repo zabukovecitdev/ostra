@@ -1,4 +1,7 @@
 LIMIT ?= 5
+# Optional folder to process instead of the configured folders, e.g. make run DIRECTORY=~/Documents/wikipedia
+DIRECTORY ?=
+DIRECTORY_FLAG = $(if $(DIRECTORY),--directory $(DIRECTORY))
 
 .DEFAULT_GOAL := help
 
@@ -7,15 +10,15 @@ LIMIT ?= 5
 help: ## Show the available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
 
-run: ## Process the configured files
-	uv run personal-rag
+run: ## Index the configured files, or DIRECTORY when set
+	uv run ostra index $(DIRECTORY_FLAG)
 
-reindex: ## Process every file again, including chunks already stored
-	uv run personal-rag --reindex
+reindex: ## Embed every chunk again, or DIRECTORY when set
+	uv run ostra index --reindex $(DIRECTORY_FLAG)
 
 search: ## Print the stored chunks closest to QUERY, e.g. make search QUERY="solar system" LIMIT=3
 	@test -n "$(QUERY)" || { echo 'Set QUERY, e.g. make search QUERY="solar system"'; exit 1; }
-	uv run personal-rag --search "$(QUERY)" --limit $(LIMIT)
+	uv run ostra search "$(QUERY)" --limit $(LIMIT)
 
 test: ## Run the test suite
 	uv run pytest

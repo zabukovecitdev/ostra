@@ -1,7 +1,7 @@
 import hashlib
 from pathlib import Path
 
-from personal_rag.hashing import hash_file, hash_text
+from ostra.hashing import hash_file, hash_text
 
 
 def test_hash_file__file_content__returns_sha256_of_raw_bytes(tmp_path: Path):

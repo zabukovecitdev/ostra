@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from personal_rag.tokenization.mxbai_tokenizer import MxbaiTokenizer
+from ostra.tokenization.mxbai_tokenizer import MxbaiTokenizer
 
 DATA_DIRECTORY = Path(__file__).parent / "data"
 

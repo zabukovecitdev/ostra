@@ -1,8 +1,8 @@
-from personal_rag.embeddings.base import EmbeddingProvider
-from personal_rag.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider, OllamaSettings
-from personal_rag.models.base import EmbeddingModel
-from personal_rag.tokenization.base import Tokenizer
-from personal_rag.tokenization.mxbai_tokenizer import MxbaiTokenizer
+from ostra.embeddings.base import EmbeddingProvider
+from ostra.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider, OllamaSettings
+from ostra.models.base import EmbeddingModel
+from ostra.tokenization.base import Tokenizer
+from ostra.tokenization.mxbai_tokenizer import MxbaiTokenizer
 
 
 class MxbaiEmbeddingModel(EmbeddingModel):

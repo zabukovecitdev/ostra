@@ -1,6 +1,6 @@
-from personal_rag.connectors.base import ChunkMatch
-from personal_rag.embeddings.base import EmbeddingProvider
-from personal_rag.repositories.file_chunk_repository import FileChunkRepository
+from ostra.connectors.base import ChunkMatch
+from ostra.embeddings.base import EmbeddingProvider
+from ostra.repositories.file_chunk_repository import FileChunkRepository
 
 
 class ChunkSearchService:

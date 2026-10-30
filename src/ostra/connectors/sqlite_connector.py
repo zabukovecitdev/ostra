@@ -7,7 +7,7 @@ from pathlib import Path
 
 import sqlite_vec
 
-from personal_rag.connectors.base import ChunkMatch, VectorDatabaseConnector
+from ostra.connectors.base import ChunkMatch, VectorDatabaseConnector
 
 logger = logging.getLogger(__name__)
 

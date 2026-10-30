@@ -3,20 +3,26 @@ from pathlib import Path
 
 import pytest
 
-from personal_rag.connectors.sqlite_connector import SqliteConnector, SqliteSettings
-from personal_rag.services.database_service import DatabaseService
+from ostra.connectors.database_facade import DatabaseBackend, DatabaseFacade
+from ostra.services.database_service import DatabaseService
+
+
+@pytest.fixture(params=[DatabaseBackend.SQLITE, DatabaseBackend.CHROMA])
+def backend(request: pytest.FixtureRequest) -> DatabaseBackend:
+    """Provide each database backend in turn."""
+    return request.param
 
 
 @pytest.fixture
 def database_path(tmp_path: Path) -> Path:
-    """Provide the location of the SQLite database file for a test."""
-    return tmp_path / "personal_rag.db"
+    """Provide the location of the SQLite database file for a test. The Chroma store is beside it."""
+    return tmp_path / "ostra.db"
 
 
 @pytest.fixture
-def connector(database_path: Path) -> Iterator[SqliteConnector]:
-    """Provide an initialized SQLite connector and close it after the test."""
-    sqlite_connector = SqliteConnector(SqliteSettings(path=database_path))
-    DatabaseService(connector=sqlite_connector).initialize()
-    yield sqlite_connector
-    sqlite_connector.close()
+def connector(backend: DatabaseBackend, database_path: Path) -> Iterator[DatabaseFacade]:
+    """Provide an initialized facade for each backend and close it after the test."""
+    facade = DatabaseFacade(backend=backend, database_path=database_path)
+    DatabaseService(connector=facade).initialize()
+    yield facade
+    facade.close()
