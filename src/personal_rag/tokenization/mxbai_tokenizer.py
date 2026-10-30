@@ -1,15 +1,23 @@
+from importlib import resources
+from pathlib import Path
+
 from tokenizers import Tokenizer as HuggingFaceTokenizer
 
 from personal_rag.tokenization.base import Tokenizer
 
-MXBAI_TOKENIZER_NAME = "mixedbread-ai/mxbai-embed-large-v1"
+BUNDLED_MXBAI_TOKENIZER_PATH = Path(
+    str(resources.files("personal_rag.tokenization") / "data" / "mxbai-embed-large-v1" / "tokenizer.json")
+)
 
 
 class MxbaiTokenizer(Tokenizer):
-    """Count tokens with the tokenizer of the mxbai-embed-large model."""
+    """Count tokens with the tokenizer of the mxbai-embed-large model.
 
-    def __init__(self, tokenizer_name: str = MXBAI_TOKENIZER_NAME):
-        self._tokenizer = HuggingFaceTokenizer.from_pretrained(tokenizer_name)
+    The tokenizer file ships with the package, so no download is needed.
+    """
+
+    def __init__(self, tokenizer_path: Path = BUNDLED_MXBAI_TOKENIZER_PATH):
+        self._tokenizer = HuggingFaceTokenizer.from_file(str(tokenizer_path))
 
     def count_tokens(self, text: str) -> int:
         """Return the number of model tokens in a text, without the special tokens.
