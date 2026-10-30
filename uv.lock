@@ -1363,7 +1363,6 @@ name = "ostra"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "chromadb" },
     { name = "ollama" },
     { name = "platformdirs" },
     { name = "pydantic-settings" },
@@ -1371,8 +1370,14 @@ dependencies = [
     { name = "tokenizers" },
 ]
 
+[package.optional-dependencies]
+chroma = [
+    { name = "chromadb" },
+]
+
 [package.dev-dependencies]
 dev = [
+    { name = "chromadb" },
     { name = "mutmut" },
     { name = "pytest" },
     { name = "ruff" },
@@ -1380,16 +1385,18 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "chromadb", specifier = ">=1.5.9" },
+    { name = "chromadb", marker = "extra == 'chroma'", specifier = ">=1.5.9" },
     { name = "ollama", specifier = ">=0.6.3" },
     { name = "platformdirs", specifier = ">=4.14.0" },
     { name = "pydantic-settings", specifier = ">=2.16.2" },
     { name = "sqlite-vec", specifier = ">=0.1.9" },
     { name = "tokenizers", specifier = ">=0.23.3" },
 ]
+provides-extras = ["chroma"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "chromadb", specifier = ">=1.5.9" },
     { name = "mutmut", specifier = ">=3.8.1" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "ruff", specifier = ">=0.17.3" },

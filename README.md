@@ -1,4 +1,10 @@
+<div align="center">
+
 # ostra
+
+*The Greek word ὄστρακον (ostrakon) means "shell" or "potsherd". Athenians used ostraka, pottery fragments, to vote in ostracism. The word also gave us "ostracize".*
+
+</div>
 
 A local retrieval pipeline for personal text files. It splits each file into token-sized chunks, embeds every chunk with a local model, stores the vectors, and returns the closest chunks for a query. Everything runs on your machine. No text leaves it.
 
@@ -56,7 +62,7 @@ The config file is `~/ostra/config.json`. It is created with defaults on the fir
 | Key | Default | Meaning |
 |---|---|---|
 | `database_path` | `~/ostra/ostra.db` | SQLite database. The Chroma store is a `chroma` folder beside it. |
-| `database_backend` | `sqlite` | `sqlite` or `chroma` |
+| `database_backend` | `sqlite` | `sqlite` or `chroma`. Chroma needs the extra: `pip install 'ostra[chroma]'` |
 | `directories` | your Documents folder | Folders to process. Only top-level `.txt`, `.md` and `.csv` files are read. |
 | `chunk_size_tokens` | `510` | Tokens per chunk. The model's 512-token input includes two special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |

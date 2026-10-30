@@ -131,13 +131,19 @@ def _create_connector(backend: DatabaseBackend, database_path: Path) -> VectorDa
         A connector of the selected backend.
 
     Raises:
+        ImportError: When the Chroma backend is selected and the chroma extra is not installed.
         ValueError: When the backend has no connector.
     """
     if backend is DatabaseBackend.SQLITE:
         return SqliteConnector(SqliteSettings(path=database_path))
 
     if backend is DatabaseBackend.CHROMA:
-        from ostra.connectors.chroma_connector import ChromaConnector, ChromaSettings
+        try:
+            from ostra.connectors.chroma_connector import ChromaConnector, ChromaSettings
+        except ImportError as error:
+            raise ImportError(
+                "The Chroma backend needs the chroma extra. Install it with: pip install 'ostra[chroma]'"
+            ) from error
 
         return ChromaConnector(ChromaSettings(path=database_path.parent / CHROMA_DIRECTORY_NAME))
 

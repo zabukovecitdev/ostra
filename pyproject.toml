@@ -19,12 +19,16 @@ classifiers = [
     "Topic :: Text Processing :: Indexing",
 ]
 dependencies = [
-    "chromadb>=1.5.9",
     "ollama>=0.6.3",
     "platformdirs>=4.14.0",
     "pydantic-settings>=2.16.2",
     "sqlite-vec>=0.1.9",
     "tokenizers>=0.23.3",
+]
+
+[project.optional-dependencies]
+chroma = [
+    "chromadb>=1.5.9",
 ]
 
 [project.scripts]
@@ -36,6 +40,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "chromadb>=1.5.9",
     "mutmut>=3.8.1",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
