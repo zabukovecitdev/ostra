@@ -7,7 +7,7 @@ from pathlib import Path
 
 import sqlite_vec
 
-from personal_rag.connectors.base import VectorDatabaseConnector
+from personal_rag.connectors.base import ChunkMatch, VectorDatabaseConnector
 
 logger = logging.getLogger(__name__)
 
@@ -146,10 +146,11 @@ class SqliteConnector(VectorDatabaseConnector):
         """
         connection = self.connect()
         row = connection.execute(
-            "SELECT embedding FROM file_chunks WHERE file_path = ? AND digest = ?",
+            "SELECT v.embedding FROM chunk_vectors v JOIN file_chunks f ON f.rowid = v.rowid "
+            "WHERE f.file_path = ? AND f.digest = ?",
             (file_path, digest),
         ).fetchone()
-        if row is None or row[0] is None:
+        if row is None:
             return None
 
         return list(struct.unpack(f"{len(row[0]) // 4}f", row[0]))
@@ -167,33 +168,78 @@ class SqliteConnector(VectorDatabaseConnector):
         rows = connection.execute("SELECT digest FROM file_chunks WHERE file_path = ?", (file_path,)).fetchall()
         return {row[0] for row in rows}
 
-    def save_chunk_digest(self, file_path: str, digest: str, embedding: list[float]) -> None:
-        """Insert a chunk digest and its embedding, or update both when the digest is already stored.
+    def save_chunk_digest(self, file_path: str, digest: str, text: str, embedding: list[float]) -> None:
+        """Insert a chunk and its embedding, or update both when the digest is already stored.
+
+        The text and the vector are written to the chunk tables in one transaction. The vector table keeps the
+        same rowid as the chunk row.
 
         Args:
             file_path: Location of the file.
             digest: SHA-256 hex digest of the chunk.
-            embedding: The embedding vector of the chunk, stored as float32 bytes.
+            text: The text of the chunk.
+            embedding: The embedding vector of the chunk.
         """
         connection = self.connect()
         connection.execute(
-            "INSERT INTO file_chunks (file_path, digest, embedding) VALUES (?, ?, ?) "
+            "INSERT INTO file_chunks (file_path, digest, chunk_text) VALUES (?, ?, ?) "
             "ON CONFLICT (file_path, digest) DO UPDATE SET "
-            "processed_at = CURRENT_TIMESTAMP, embedding = excluded.embedding",
-            (file_path, digest, sqlite_vec.serialize_float32(embedding)),
+            "processed_at = CURRENT_TIMESTAMP, chunk_text = excluded.chunk_text",
+            (file_path, digest, text),
+        )
+        rowid = connection.execute(
+            "SELECT rowid FROM file_chunks WHERE file_path = ? AND digest = ?",
+            (file_path, digest),
+        ).fetchone()[0]
+        connection.execute("DELETE FROM chunk_vectors WHERE rowid = ?", (rowid,))
+        connection.execute(
+            "INSERT INTO chunk_vectors (rowid, embedding) VALUES (?, ?)",
+            (rowid, sqlite_vec.serialize_float32(embedding)),
         )
         connection.commit()
 
     def delete_chunk_digests(self, file_path: str, digests: set[str]) -> None:
-        """Delete the stored chunk digests that the file no longer has.
+        """Delete the stored chunks and their vectors that the file no longer has.
 
         Args:
             file_path: Location of the file.
             digests: SHA-256 hex digests to delete.
         """
         connection = self.connect()
+        rowids = []
+        for digest in digests:
+            row = connection.execute(
+                "SELECT rowid FROM file_chunks WHERE file_path = ? AND digest = ?",
+                (file_path, digest),
+            ).fetchone()
+            if row is not None:
+                rowids.append(row[0])
+
+        connection.executemany("DELETE FROM chunk_vectors WHERE rowid = ?", [(rowid,) for rowid in rowids])
         connection.executemany(
             "DELETE FROM file_chunks WHERE file_path = ? AND digest = ?",
             [(file_path, digest) for digest in digests],
         )
         connection.commit()
+
+    def search_chunks(self, query_embedding: list[float], limit: int) -> list[ChunkMatch]:
+        """Return the stored chunks that are closest to a query vector.
+
+        Args:
+            query_embedding: The embedding vector of the query.
+            limit: The number of chunks to return.
+
+        Returns:
+            The closest chunks, nearest first. Each match has a cosine distance, where 0 means the same direction.
+        """
+        connection = self.connect()
+        rows = connection.execute(
+            "SELECT f.file_path, f.digest, f.chunk_text, v.distance FROM chunk_vectors v "
+            "JOIN file_chunks f ON f.rowid = v.rowid "
+            "WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance",
+            (sqlite_vec.serialize_float32(query_embedding), limit),
+        ).fetchall()
+        return [
+            ChunkMatch(file_path=file_path, digest=digest, text=text, distance=distance)
+            for file_path, digest, text, distance in rows
+        ]

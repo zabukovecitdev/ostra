@@ -4,7 +4,14 @@ import pytest
 
 from personal_rag.connectors.sqlite_connector import SqliteConnector, SqliteSettings
 
-EMBEDDING = [0.1, 0.2, 0.3]
+EMBEDDING = [0.1] * 1024
+
+
+def one_hot(index: int) -> list[float]:
+    """Return a 1024-value vector with a single 1.0 at the index, so that vectors differ in direction."""
+    vector = [0.0] * 1024
+    vector[index] = 1.0
+    return vector
 
 
 def test_get_file_digest__file_not_saved__returns_none(connector: SqliteConnector):
@@ -35,32 +42,32 @@ def test_get_chunk_digests__no_chunks__returns_empty_set(connector: SqliteConnec
 
 def test_save_chunk_digest__two_digests__returns_both(connector: SqliteConnector):
     """Return every chunk digest that was saved for the file."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
-    connector.save_chunk_digest("/notes/a.txt", "chunk-2", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "chunk text", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-2", "chunk text", EMBEDDING)
 
     assert connector.get_chunk_digests("/notes/a.txt") == {"chunk-1", "chunk-2"}
 
 
 def test_save_chunk_digest__same_digest_twice__returns_one(connector: SqliteConnector):
     """Store a repeated chunk digest only once for the file."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "chunk text", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "chunk text", EMBEDDING)
 
     assert connector.get_chunk_digests("/notes/a.txt") == {"chunk-1"}
 
 
 def test_get_chunk_digests__other_file__not_returned(connector: SqliteConnector):
     """Return only the chunk digests of the requested file."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
-    connector.save_chunk_digest("/notes/b.txt", "chunk-2", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "chunk text", EMBEDDING)
+    connector.save_chunk_digest("/notes/b.txt", "chunk-2", "chunk text", EMBEDDING)
 
     assert connector.get_chunk_digests("/notes/a.txt") == {"chunk-1"}
 
 
 def test_delete_chunk_digests__some_digests__removes_only_those(connector: SqliteConnector):
     """Delete the given chunk digests and keep the others."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
-    connector.save_chunk_digest("/notes/a.txt", "chunk-2", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "chunk text", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-2", "chunk text", EMBEDDING)
 
     connector.delete_chunk_digests("/notes/a.txt", {"chunk-1"})
 
@@ -69,7 +76,7 @@ def test_delete_chunk_digests__some_digests__removes_only_those(connector: Sqlit
 
 def test_delete_chunk_digests__empty_set__keeps_chunks(connector: SqliteConnector):
     """Keep every chunk when no digest is given to delete."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "chunk text", EMBEDDING)
 
     connector.delete_chunk_digests("/notes/a.txt", set())
 
@@ -86,7 +93,7 @@ def test_delete_chunk_digests__digest_not_stored__raises_no_error(connector: Sql
 def test_save_then_reopen__data_persisted(database_path: Path, connector: SqliteConnector):
     """Read back the saved digests from a new connector that opens the same store."""
     connector.save_file_digest("/notes/a.txt", "digest-1")
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "chunk text", EMBEDDING)
     connector.close()
 
     reopened = SqliteConnector(SqliteSettings(path=database_path))
@@ -100,8 +107,56 @@ def test_save_then_reopen__data_persisted(database_path: Path, connector: Sqlite
 @pytest.mark.parametrize("digest", ["chunk-1", "chunk-2"])
 def test_save_chunk_digest__multiple_files__keeps_files_apart(connector: SqliteConnector, digest: str):
     """Keep the chunk digests of different files apart even when the digest is the same."""
-    connector.save_chunk_digest("/notes/a.txt", digest, EMBEDDING)
-    connector.save_chunk_digest("/notes/b.txt", digest, EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", digest, "chunk text", EMBEDDING)
+    connector.save_chunk_digest("/notes/b.txt", digest, "chunk text", EMBEDDING)
 
     assert connector.get_chunk_digests("/notes/a.txt") == {digest}
     assert connector.get_chunk_digests("/notes/b.txt") == {digest}
+
+
+def test_search_chunks__query_matches_one_chunk__returns_nearest_first(connector: SqliteConnector):
+    """Return the chunk with the same direction first, with its text and a distance of 0."""
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "first text", one_hot(1))
+    connector.save_chunk_digest("/notes/a.txt", "chunk-2", "second text", one_hot(2))
+
+    matches = connector.search_chunks(query_embedding=one_hot(1), limit=2)
+
+    assert [(match.digest, match.text) for match in matches] == [("chunk-1", "first text"), ("chunk-2", "second text")]
+    assert matches[0].distance == pytest.approx(0.0, abs=1e-6)
+    assert matches[1].distance == pytest.approx(1.0, abs=1e-6)
+
+
+def test_search_chunks__limit_reached__returns_only_limit_matches(connector: SqliteConnector):
+    """Return no more matches than the limit."""
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "first text", one_hot(1))
+    connector.save_chunk_digest("/notes/a.txt", "chunk-2", "second text", one_hot(2))
+
+    matches = connector.search_chunks(query_embedding=one_hot(1), limit=1)
+
+    assert [match.digest for match in matches] == ["chunk-1"]
+
+
+def test_search_chunks__no_chunks_stored__returns_empty_list(connector: SqliteConnector):
+    """Return an empty list when no chunk is stored."""
+    assert connector.search_chunks(query_embedding=one_hot(1), limit=5) == []
+
+
+def test_search_chunks__chunk_deleted__is_not_returned(connector: SqliteConnector):
+    """Stop returning a chunk after it is deleted, so its vector is removed too."""
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "first text", one_hot(1))
+    connector.save_chunk_digest("/notes/a.txt", "chunk-2", "second text", one_hot(2))
+
+    connector.delete_chunk_digests("/notes/a.txt", {"chunk-1"})
+    matches = connector.search_chunks(query_embedding=one_hot(1), limit=5)
+
+    assert [match.digest for match in matches] == ["chunk-2"]
+
+
+def test_save_chunk_digest__digest_saved_again__replaces_text_and_vector(connector: SqliteConnector):
+    """Replace the text and the vector of a stored chunk when the same digest is saved again."""
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "old text", one_hot(1))
+
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", "new text", one_hot(2))
+    matches = connector.search_chunks(query_embedding=one_hot(2), limit=5)
+
+    assert [(match.text, match.distance) for match in matches] == [("new text", pytest.approx(0.0, abs=1e-6))]

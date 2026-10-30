@@ -1,5 +1,16 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any
+
+
+@dataclass(frozen=True)
+class ChunkMatch:
+    """Hold one stored chunk returned by a vector search."""
+
+    file_path: str
+    digest: str
+    text: str
+    distance: float
 
 
 class VectorDatabaseConnector(ABC):
@@ -57,13 +68,26 @@ class VectorDatabaseConnector(ABC):
         """
 
     @abstractmethod
-    def save_chunk_digest(self, file_path: str, digest: str, embedding: list[float]) -> None:
-        """Insert a chunk digest and its embedding, or update both when the digest is already stored.
+    def save_chunk_digest(self, file_path: str, digest: str, text: str, embedding: list[float]) -> None:
+        """Insert a chunk and its embedding, or update both when the digest is already stored.
 
         Args:
             file_path: Location of the file.
             digest: SHA-256 hex digest of the chunk.
+            text: The text of the chunk.
             embedding: The embedding vector of the chunk.
+        """
+
+    @abstractmethod
+    def search_chunks(self, query_embedding: list[float], limit: int) -> list[ChunkMatch]:
+        """Return the stored chunks that are closest to a query vector.
+
+        Args:
+            query_embedding: The embedding vector of the query.
+            limit: The number of chunks to return.
+
+        Returns:
+            The closest chunks, nearest first.
         """
 
     @abstractmethod

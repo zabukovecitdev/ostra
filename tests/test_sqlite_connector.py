@@ -177,6 +177,7 @@ def test_migrate__run_twice__records_each_migration_once(tmp_path: Path):
         ("002_create_file_chunks_table",),
         ("003_key_file_chunks_by_digest",),
         ("004_add_chunk_embedding",),
+        ("005_create_chunk_vectors",),
     ]
 
 
@@ -193,4 +194,5 @@ def test_migrate__migration_logged__logs_each_applied_version(tmp_path: Path, ca
         "Applying migration. Version=002_create_file_chunks_table",
         "Applying migration. Version=003_key_file_chunks_by_digest",
         "Applying migration. Version=004_add_chunk_embedding",
+        "Applying migration. Version=005_create_chunk_vectors",
     ]

@@ -5,6 +5,43 @@ import pytest
 
 from personal_rag import main
 from personal_rag.config import AppConfig
+from personal_rag.embeddings.base import EmbeddingProvider
+from personal_rag.models.base import EmbeddingModel
+from personal_rag.tokenization.base import Tokenizer
+
+
+class FakeTokenizer(Tokenizer):
+    """Count each word as one token."""
+
+    def count_tokens(self, text: str) -> int:
+        """Return the number of words in the text."""
+        return len(text.split())
+
+
+class FakeEmbeddingProvider(EmbeddingProvider):
+    """Return the same 1024-value vector for every text."""
+
+    def get_embedding(self, text: str) -> list[float]:
+        """Return a fixed vector."""
+        return [0.5] * 1024
+
+
+class FakeEmbeddingModel(EmbeddingModel):
+    """Stand in for the Ollama model so that the tests do not call a server or download a tokenizer."""
+
+    def get_embedding_provider(self) -> EmbeddingProvider:
+        """Return the fake provider."""
+        return FakeEmbeddingProvider()
+
+    def get_tokenizer(self) -> Tokenizer:
+        """Return the fake tokenizer."""
+        return FakeTokenizer()
+
+
+@pytest.fixture(autouse=True)
+def fake_embedding_model(monkeypatch: pytest.MonkeyPatch):
+    """Replace the embedding model that main creates with the fake model for every test."""
+    monkeypatch.setattr(main, "MxbaiEmbeddingModel", lambda settings: FakeEmbeddingModel())
 
 
 def test_main__database_ready__prints_database_path(
@@ -83,3 +120,30 @@ def test_main__no_reindex_flag__skips_lines_of_unchanged_file(
     main.main([])
 
     assert capsys.readouterr().out.splitlines()[1:] == []
+
+
+def test_main__search_flag__prints_stored_chunk_with_its_file(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Print the stored chunk and its file path when the search flag is given."""
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("alpha beta\n")
+    monkeypatch.setattr(
+        main, "load_config", lambda: AppConfig(database_path=tmp_path / "personal_rag.db", directories=[notes])
+    )
+    main.main([])
+    capsys.readouterr()
+
+    main.main(["--search", "alpha", "--limit", "1"])
+
+    output = capsys.readouterr().out
+    assert f"file={notes / 'a.txt'}" in output
+    assert "alpha beta" in output
+
+
+def test_main__search_flag_without_limit__uses_default_limit():
+    """Use five as the default number of chunks for a search."""
+    arguments = main._parse_arguments(["--search", "alpha"])
+
+    assert (arguments.search, arguments.limit) == ("alpha", 5)

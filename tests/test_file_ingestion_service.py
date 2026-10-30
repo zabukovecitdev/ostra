@@ -16,7 +16,7 @@ DATA_DIRECTORY = Path(__file__).parent / "data"
 
 
 class FakeEmbeddingProvider(EmbeddingProvider):
-    """Return a vector that depends on the text length and count the calls."""
+    """Return a 1024-value vector that depends on the text length and count the calls."""
 
     def __init__(self):
         self.calls: list[str] = []
@@ -24,7 +24,7 @@ class FakeEmbeddingProvider(EmbeddingProvider):
     def get_embedding(self, text: str) -> list[float]:
         """Record the text and return a three-value vector for it."""
         self.calls.append(text)
-        return [float(len(text)), 0.5, 1.0]
+        return [float(len(text))] + [0.5] * 1023
 
 
 def one_token_per_word(word: str) -> int:
@@ -123,7 +123,7 @@ def test_process_files__run_stopped_after_first_chunk__resumes_at_next_chunk(con
     """Skip the chunks that a stopped run already saved and process the remaining chunks."""
     file_path = tmp_path / "a.txt"
     file_path.write_text("alpha\nbeta\ngamma\n")
-    FileChunkRepository(connector=connector).save_chunk(str(file_path), hash_text("alpha"), [0.1, 0.2, 0.3])
+    FileChunkRepository(connector=connector).save_chunk(str(file_path), hash_text("alpha"), "alpha", [0.1] * 1024)
 
     make_service(connector, tmp_path, chunk_size_tokens=1, chunk_overlap_tokens=0).process_files()
 
@@ -241,7 +241,7 @@ def test_process_files__new_chunk__embeds_chunk_and_stores_vector(connector, tmp
     make_service(connector, tmp_path, embedding_provider=provider).process_files()
 
     assert provider.calls == ["alpha beta"]
-    assert connector.get_chunk_embedding(str(file_path), hash_text("alpha beta")) == [10.0, 0.5, 1.0]
+    assert connector.get_chunk_embedding(str(file_path), hash_text("alpha beta")) == [10.0] + [0.5] * 1023
 
 
 def test_process_files__second_run_unchanged__does_not_embed_again(connector, tmp_path: Path):

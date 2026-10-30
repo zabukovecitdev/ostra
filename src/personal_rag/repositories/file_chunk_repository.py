@@ -1,4 +1,4 @@
-from personal_rag.connectors.base import VectorDatabaseConnector
+from personal_rag.connectors.base import ChunkMatch, VectorDatabaseConnector
 
 
 class FileChunkRepository:
@@ -18,15 +18,28 @@ class FileChunkRepository:
         """
         return self._connector.get_chunk_digests(file_path=file_path)
 
-    def save_chunk(self, file_path: str, digest: str, embedding: list[float]) -> None:
-        """Insert a chunk digest and its embedding, or update both when the digest is already stored.
+    def save_chunk(self, file_path: str, digest: str, text: str, embedding: list[float]) -> None:
+        """Insert a chunk and its embedding, or update both when the digest is already stored.
 
         Args:
             file_path: Location of the file.
             digest: SHA-256 hex digest of the chunk.
+            text: The text of the chunk.
             embedding: The embedding vector of the chunk.
         """
-        self._connector.save_chunk_digest(file_path=file_path, digest=digest, embedding=embedding)
+        self._connector.save_chunk_digest(file_path=file_path, digest=digest, text=text, embedding=embedding)
+
+    def search(self, query_embedding: list[float], limit: int) -> list[ChunkMatch]:
+        """Return the stored chunks that are closest to a query vector.
+
+        Args:
+            query_embedding: The embedding vector of the query.
+            limit: The number of chunks to return.
+
+        Returns:
+            The closest chunks, nearest first.
+        """
+        return self._connector.search_chunks(query_embedding=query_embedding, limit=limit)
 
     def delete_chunks(self, file_path: str, digests: set[str]) -> None:
         """Delete the stored digests that the file no longer has.

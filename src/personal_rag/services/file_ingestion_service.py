@@ -56,7 +56,7 @@ class FileIngestionService:
                 continue
 
             embedding = self._embedding_provider.get_embedding(chunk)
-            self._file_chunk_repository.save_chunk(file_key, chunk_digest, embedding)
+            self._file_chunk_repository.save_chunk(file_key, chunk_digest, chunk, embedding)
             print(chunk)
             skipped_digests.add(chunk_digest)
 
