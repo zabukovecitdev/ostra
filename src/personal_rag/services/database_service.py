@@ -8,5 +8,6 @@ class DatabaseService:
         self._connector = connector
 
     def initialize(self) -> None:
-        """Create the database when it is missing, through the connector."""
+        """Create the database when it is missing, then apply the schema migrations."""
         self._connector.ensure_database()
+        self._connector.migrate()

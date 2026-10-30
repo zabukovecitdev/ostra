@@ -223,6 +223,7 @@ name = "personal-rag"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "platformdirs" },
     { name = "sqlite-vec" },
 ]
 
@@ -234,7 +235,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "sqlite-vec", specifier = ">=0.1.9" }]
+requires-dist = [
+    { name = "platformdirs", specifier = ">=4.14.0" },
+    { name = "sqlite-vec", specifier = ">=0.1.9" },
+]
 
 [package.metadata.requires-dev]
 dev = [

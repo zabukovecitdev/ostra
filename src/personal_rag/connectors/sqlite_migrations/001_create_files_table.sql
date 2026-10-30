@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS files (
+    file_path TEXT PRIMARY KEY,
+    digest TEXT NOT NULL,
+    processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

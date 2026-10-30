@@ -12,6 +12,13 @@ logger = logging.getLogger(__name__)
 
 OWNER_ONLY_DIRECTORY_MODE = 0o700
 OWNER_ONLY_FILE_MODE = 0o600
+SQLITE_MIGRATIONS_DIRECTORY = Path(__file__).parent / "sqlite_migrations"
+CREATE_SCHEMA_MIGRATIONS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
 
 
 @dataclass(frozen=True)
@@ -75,3 +82,25 @@ class SqliteConnector(VectorDatabaseConnector):
 
         self._connection.close()
         self._connection = None
+
+    def migrate(self) -> None:
+        """Apply each SQLite migration that has not run yet.
+
+        Record each applied migration in the schema_migrations table. Run each migration only once.
+        Apply the migrations in file name order.
+        """
+        connection = self.connect()
+        try:
+            connection.execute(CREATE_SCHEMA_MIGRATIONS_TABLE_SQL)
+            applied_versions = {row[0] for row in connection.execute("SELECT version FROM schema_migrations")}
+            for migration_path in sorted(SQLITE_MIGRATIONS_DIRECTORY.glob("*.sql")):
+                version = migration_path.stem
+                if version in applied_versions:
+                    continue
+
+                logger.info("Applying migration. Version=%s", version)
+                connection.executescript(migration_path.read_text())
+                connection.execute("INSERT INTO schema_migrations (version) VALUES (?)", (version,))
+                connection.commit()
+        finally:
+            self.close()

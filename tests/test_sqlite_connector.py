@@ -144,3 +144,51 @@ def test_close__no_connection_open__does_not_raise(tmp_path: Path):
 
     assert connector.connect() is not None
     connector.close()
+
+
+def test_migrate__new_database__creates_files_table_with_expected_columns(tmp_path: Path):
+    """Create the files table with the file_path, digest, and processed_at columns."""
+    connector = SqliteConnector(SqliteSettings(path=tmp_path / "personal_rag.db"))
+    connector.ensure_database()
+
+    connector.migrate()
+    columns = connector.connect().execute("PRAGMA table_info(files)").fetchall()
+    connector.close()
+
+    assert [(column[1], column[2], column[3]) for column in columns] == [
+        ("file_path", "TEXT", 0),
+        ("digest", "TEXT", 1),
+        ("processed_at", "TEXT", 1),
+    ]
+
+
+def test_migrate__run_twice__records_each_migration_once(tmp_path: Path):
+    """Record each migration once when migrate runs twice."""
+    connector = SqliteConnector(SqliteSettings(path=tmp_path / "personal_rag.db"))
+    connector.ensure_database()
+
+    connector.migrate()
+    connector.migrate()
+    versions = connector.connect().execute("SELECT version FROM schema_migrations").fetchall()
+    connector.close()
+
+    assert versions == [
+        ("001_create_files_table",),
+        ("002_create_file_chunks_table",),
+        ("003_key_file_chunks_by_digest",),
+    ]
+
+
+def test_migrate__migration_logged__logs_each_applied_version(tmp_path: Path, caplog: pytest.LogCaptureFixture):
+    """Log the version of each migration that it applies."""
+    connector = SqliteConnector(SqliteSettings(path=tmp_path / "personal_rag.db"))
+    connector.ensure_database()
+
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        connector.migrate()
+
+    assert [record.getMessage() for record in caplog.records] == [
+        "Applying migration. Version=001_create_files_table",
+        "Applying migration. Version=002_create_file_chunks_table",
+        "Applying migration. Version=003_key_file_chunks_by_digest",
+    ]

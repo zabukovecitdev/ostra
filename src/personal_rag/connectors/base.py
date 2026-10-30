@@ -20,3 +20,7 @@ class VectorDatabaseConnector(ABC):
     @abstractmethod
     def close(self) -> None:
         """Release the open connection."""
+
+    @abstractmethod
+    def migrate(self) -> None:
+        """Apply the schema migrations that have not run yet."""

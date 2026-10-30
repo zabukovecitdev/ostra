@@ -1,4 +1,4 @@
-from unittest.mock import create_autospec
+from unittest.mock import call, create_autospec
 
 from personal_rag.connectors.base import VectorDatabaseConnector
 from personal_rag.services.database_service import DatabaseService
@@ -12,3 +12,13 @@ def test_initialize__connector_given__calls_ensure_database_once():
     service.initialize()
 
     connector.ensure_database.assert_called_once_with()
+
+
+def test_initialize__connector_given__applies_migrations_after_creating_database():
+    """Apply the schema migrations on the connector after the database exists."""
+    connector = create_autospec(VectorDatabaseConnector, instance=True)
+    service = DatabaseService(connector=connector)
+
+    service.initialize()
+
+    assert connector.mock_calls == [call.ensure_database(), call.migrate()]
