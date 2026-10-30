@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from ostra.services.file_service import FileService
 from ostra.services.text_chunker import TextChunker
 
 DEFAULT_SEARCH_LIMIT = 5
+MAX_SHORT_TEXT_CHARACTERS = 300
 
 
 def main(argv: list[str] | None = None):
@@ -24,6 +26,8 @@ def main(argv: list[str] | None = None):
         argv: Command line arguments without the program name. Read sys.argv when None.
     """
     logging.basicConfig(level=logging.INFO)
+    # The HTTP client logs every request at INFO level. Keep those lines out of the command output.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     parser = _build_parser()
     arguments = parser.parse_args(argv)
     if arguments.command is None:
@@ -35,17 +39,20 @@ def main(argv: list[str] | None = None):
     connector = DatabaseFacade(backend=backend, database_path=config.database_path)
     embedding_model = MxbaiEmbeddingModel(settings=OllamaSettings())
     DatabaseService(connector=connector).initialize()
-    print(f"Database ready. Backend={backend.value}")
 
     try:
         if arguments.command == "search":
             _print_search_results(
                 query=arguments.query,
                 limit=arguments.limit,
+                max_distance=arguments.max_distance,
+                full_text=arguments.full,
+                as_json=arguments.json,
                 embedding_provider=embedding_model.get_embedding_provider(),
                 file_chunk_repository=FileChunkRepository(connector=connector),
             )
         else:
+            print(f"Database ready. Backend={backend.value}")
             _index_files(
                 arguments=arguments,
                 config=config,
@@ -82,22 +89,84 @@ def _index_files(arguments, config, connector, embedding_model) -> None:
     ingestion_service.process_files()
 
 
-def _print_search_results(query, limit, embedding_provider, file_chunk_repository) -> None:
+def _print_search_results(
+    query, limit, max_distance, full_text, as_json, embedding_provider, file_chunk_repository
+) -> None:
     """Print the stored chunks that are closest to the query, nearest first.
 
     Args:
         query: The text to search for.
         limit: The number of chunks to print.
+        max_distance: Hide the chunks with a larger cosine distance. None keeps every chunk.
+        full_text: Print the whole text of each chunk instead of a shortened text.
+        as_json: Print the chunks as a JSON list instead of plain text.
         embedding_provider: Provider that embeds the query.
         file_chunk_repository: Repository that searches the stored chunks.
     """
     search_service = ChunkSearchService(
         embedding_provider=embedding_provider, file_chunk_repository=file_chunk_repository
     )
-    for match in search_service.search(query=query, limit=limit):
-        print(f"distance={match.distance:.4f} file={match.file_path}")
-        print(match.text)
+    matches = search_service.search(query=query, limit=limit)
+    if max_distance is not None:
+        matches = [match for match in matches if match.distance <= max_distance]
+
+    if as_json:
+        print(json.dumps([_match_to_dict(match) for match in matches], ensure_ascii=False, indent=2))
+        return
+
+    if not matches:
+        print("No matching chunks.")
+        return
+
+    for match in matches:
+        print(f"match {round(_similarity(match.distance) * 100)}%  file={match.file_path}")
+        print(_shorten_text(match.text, full_text))
         print()
+
+
+def _similarity(distance: float) -> float:
+    """Convert a cosine distance to a similarity.
+
+    Args:
+        distance: The cosine distance of a chunk. 0 means the same direction and 1 means unrelated.
+
+    Returns:
+        The similarity from -1 to 1, where 1 means the same direction.
+    """
+    return 1 - distance
+
+
+def _shorten_text(text: str, full_text: bool) -> str:
+    """Cut a chunk text to a short preview, unless the full text is requested.
+
+    Args:
+        text: The text of the chunk.
+        full_text: Return the text unchanged when True.
+
+    Returns:
+        The text, or its first characters followed by an ellipsis when it is long.
+    """
+    if full_text or len(text) <= MAX_SHORT_TEXT_CHARACTERS:
+        return text
+
+    return text[:MAX_SHORT_TEXT_CHARACTERS].rstrip() + "..."
+
+
+def _match_to_dict(match) -> dict:
+    """Convert a search match to a dictionary that holds the full text.
+
+    Args:
+        match: The chunk match from the search.
+
+    Returns:
+        The file path, the distance, the similarity and the full text of the chunk.
+    """
+    return {
+        "file_path": match.file_path,
+        "distance": match.distance,
+        "similarity": round(_similarity(match.distance), 4),
+        "text": match.text,
+    }
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -151,6 +220,22 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_SEARCH_LIMIT,
         help=f"Number of chunks to print. Default is {DEFAULT_SEARCH_LIMIT}.",
+    )
+    search.add_argument(
+        "--max-distance",
+        type=float,
+        metavar="DISTANCE",
+        help="Hide chunks with a larger cosine distance. Distance runs from 0 (same direction) to 2 (opposite).",
+    )
+    search.add_argument(
+        "--full",
+        action="store_true",
+        help="Print the whole text of each chunk. By default the text is shortened.",
+    )
+    search.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the chunks as a JSON list, with the full text.",
     )
 
     return parser

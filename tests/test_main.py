@@ -1,3 +1,4 @@
+import json
 import logging
 from pathlib import Path
 
@@ -238,3 +239,114 @@ def test_main__database_option_after_command__selects_backend():
     arguments = main._build_parser().parse_args(["search", "alpha", "--database", "chroma"])
 
     assert arguments.database is DatabaseBackend.CHROMA
+
+
+def _index_text(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, text: str) -> Path:
+    """Index one text file into a SQLite database and return the path of the file."""
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    file_path = notes / "a.txt"
+    file_path.write_text(text)
+    monkeypatch.setattr(
+        main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
+    )
+    main.main(["index"])
+    return file_path
+
+
+def test_main__search__prints_only_results_without_database_status(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Print the similarity, the file and the text of each result, without the database status line."""
+    file_path = _index_text(monkeypatch, tmp_path, "alpha beta\n")
+    capsys.readouterr()
+
+    main.main(["search", "alpha"])
+
+    assert capsys.readouterr().out == f"match 100%  file={file_path}\nalpha beta\n\n"
+
+
+def test_main__search_no_stored_chunks__prints_no_matching_chunks(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Print a message when the search finds no stored chunks."""
+    monkeypatch.setattr(main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[]))
+
+    main.main(["search", "alpha"])
+
+    assert capsys.readouterr().out == "No matching chunks.\n"
+
+
+def test_main__search_long_text__prints_shortened_text_with_ellipsis(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Shorten a chunk text longer than 300 characters and end it with an ellipsis."""
+    _index_text(monkeypatch, tmp_path, " ".join(["word"] * 600))
+    capsys.readouterr()
+
+    main.main(["search", "word", "--limit", "1"])
+
+    text_line = capsys.readouterr().out.splitlines()[1]
+    assert text_line.endswith("...")
+    assert len(text_line) <= main.MAX_SHORT_TEXT_CHARACTERS + len("...")
+
+
+def test_main__search_full_flag__prints_whole_chunk_text(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Print the whole chunk text, without shortening, when the full flag is given."""
+    _index_text(monkeypatch, tmp_path, " ".join(["word"] * 600))
+    capsys.readouterr()
+
+    main.main(["search", "word", "--limit", "1", "--full"])
+
+    text_line = capsys.readouterr().out.splitlines()[1]
+    assert len(text_line) > main.MAX_SHORT_TEXT_CHARACTERS
+    assert not text_line.endswith("...")
+
+
+def test_main__search_max_distance_below_distance__hides_all_chunks(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Hide every chunk when the largest accepted distance is below the distance of the match."""
+    _index_text(monkeypatch, tmp_path, "alpha beta\n")
+    capsys.readouterr()
+
+    main.main(["search", "alpha", "--max-distance", "-0.1"])
+
+    assert capsys.readouterr().out == "No matching chunks.\n"
+
+
+def test_main__search_max_distance_above_distance__keeps_chunk(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Keep the chunk when its distance is within the accepted maximum."""
+    file_path = _index_text(monkeypatch, tmp_path, "alpha beta\n")
+    capsys.readouterr()
+
+    main.main(["search", "alpha", "--max-distance", "0.5"])
+
+    assert f"file={file_path}" in capsys.readouterr().out
+
+
+def test_main__search_json_flag__prints_list_with_full_text(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Print the results as a JSON list that holds the file path, the scores and the full text."""
+    file_path = _index_text(monkeypatch, tmp_path, " ".join(["word"] * 600))
+    capsys.readouterr()
+
+    main.main(["search", "word", "--limit", "2", "--json"])
+
+    chunks = json.loads(capsys.readouterr().out)
+    assert len(chunks) == 2
+    assert chunks[0]["file_path"] == str(file_path)
+    assert chunks[0]["similarity"] == pytest.approx(1.0)
+    assert len(chunks[0]["text"]) > main.MAX_SHORT_TEXT_CHARACTERS
+
+
+def test_main__search_max_distance_option__parses_float():
+    """Read the maximum distance as a number."""
+    arguments = main._build_parser().parse_args(["search", "alpha", "--max-distance", "0.4"])
+
+    assert arguments.max_distance == 0.4

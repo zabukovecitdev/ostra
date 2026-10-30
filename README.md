@@ -81,7 +81,10 @@ The Ollama server and model come from environment variables:
 | `ostra index` | Embed and store the new or changed chunks of the configured folders |
 | `ostra index --directory PATH` | Index one or more folders instead of the configured ones. Repeat the option for more folders. |
 | `ostra index --reindex` | Embed every chunk again, even those already stored |
-| `ostra search "query" --limit 5` | Print the chunks closest to the query |
+| `ostra search "query" --limit 5` | Print the chunks closest to the query, with a similarity percentage and a short preview |
+| `ostra search "query" --max-distance 0.4` | Hide chunks whose cosine distance is above 0.4 (0 is the same direction, 2 is opposite) |
+| `ostra search "query" --full` | Print the whole text of each chunk |
+| `ostra search "query" --json` | Print the chunks as a JSON list with the full text |
 | `ostra --database chroma index` | Use the Chroma backend for this run. The option also works after the command name. |
 
 Run `ostra --help` or `ostra index --help` for the full list of options.
