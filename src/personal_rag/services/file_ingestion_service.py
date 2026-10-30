@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from personal_rag.embeddings.base import EmbeddingProvider
 from personal_rag.hashing import hash_file, hash_text
 from personal_rag.repositories.file_chunk_repository import FileChunkRepository
 from personal_rag.repositories.file_repository import FileRepository
@@ -16,12 +17,14 @@ class FileIngestionService:
         file_repository: FileRepository,
         file_chunk_repository: FileChunkRepository,
         chunker: TextChunker,
+        embedding_provider: EmbeddingProvider,
         reindex: bool,
     ):
         self._file_service = file_service
         self._file_repository = file_repository
         self._file_chunk_repository = file_chunk_repository
         self._chunker = chunker
+        self._embedding_provider = embedding_provider
         self._reindex = reindex
 
     def process_files(self) -> None:
@@ -30,12 +33,12 @@ class FileIngestionService:
             self._process_file(file_path)
 
     def _process_file(self, file_path: Path) -> None:
-        """Save the file digest, then process each chunk whose digest is not stored.
+        """Save the file digest, then embed and store each chunk whose digest is not stored.
 
         A chunk is skipped when its digest is stored for the file, whatever its position.
-        When reindex is set, no stored digest is skipped, so every chunk is processed again.
-        Save the digest of each processed chunk after the chunk is processed. Delete the stored digests that
-        no chunk of the file has. Process the chunk by printing it.
+        When reindex is set, no stored digest is skipped, so every chunk is embedded again.
+        Embed each processed chunk and save it with its embedding, then print it.
+        Delete the stored digests that no chunk of the file has.
 
         Args:
             file_path: Location of the file to process.
@@ -52,8 +55,9 @@ class FileIngestionService:
             if chunk_digest in skipped_digests:
                 continue
 
+            embedding = self._embedding_provider.get_embedding(chunk)
+            self._file_chunk_repository.save_chunk(file_key, chunk_digest, embedding)
             print(chunk)
-            self._file_chunk_repository.save_chunk(file_key, chunk_digest)
             skipped_digests.add(chunk_digest)
 
         self._file_chunk_repository.delete_chunks(file_key, stored_digests - current_digests)

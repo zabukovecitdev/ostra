@@ -4,6 +4,8 @@ import pytest
 
 from personal_rag.connectors.sqlite_connector import SqliteConnector, SqliteSettings
 
+EMBEDDING = [0.1, 0.2, 0.3]
+
 
 def test_get_file_digest__file_not_saved__returns_none(connector: SqliteConnector):
     """Return None for a file that no run has saved."""
@@ -33,32 +35,32 @@ def test_get_chunk_digests__no_chunks__returns_empty_set(connector: SqliteConnec
 
 def test_save_chunk_digest__two_digests__returns_both(connector: SqliteConnector):
     """Return every chunk digest that was saved for the file."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1")
-    connector.save_chunk_digest("/notes/a.txt", "chunk-2")
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-2", EMBEDDING)
 
     assert connector.get_chunk_digests("/notes/a.txt") == {"chunk-1", "chunk-2"}
 
 
 def test_save_chunk_digest__same_digest_twice__returns_one(connector: SqliteConnector):
     """Store a repeated chunk digest only once for the file."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1")
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1")
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
 
     assert connector.get_chunk_digests("/notes/a.txt") == {"chunk-1"}
 
 
 def test_get_chunk_digests__other_file__not_returned(connector: SqliteConnector):
     """Return only the chunk digests of the requested file."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1")
-    connector.save_chunk_digest("/notes/b.txt", "chunk-2")
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
+    connector.save_chunk_digest("/notes/b.txt", "chunk-2", EMBEDDING)
 
     assert connector.get_chunk_digests("/notes/a.txt") == {"chunk-1"}
 
 
 def test_delete_chunk_digests__some_digests__removes_only_those(connector: SqliteConnector):
     """Delete the given chunk digests and keep the others."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1")
-    connector.save_chunk_digest("/notes/a.txt", "chunk-2")
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
+    connector.save_chunk_digest("/notes/a.txt", "chunk-2", EMBEDDING)
 
     connector.delete_chunk_digests("/notes/a.txt", {"chunk-1"})
 
@@ -67,7 +69,7 @@ def test_delete_chunk_digests__some_digests__removes_only_those(connector: Sqlit
 
 def test_delete_chunk_digests__empty_set__keeps_chunks(connector: SqliteConnector):
     """Keep every chunk when no digest is given to delete."""
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1")
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
 
     connector.delete_chunk_digests("/notes/a.txt", set())
 
@@ -84,7 +86,7 @@ def test_delete_chunk_digests__digest_not_stored__raises_no_error(connector: Sql
 def test_save_then_reopen__data_persisted(database_path: Path, connector: SqliteConnector):
     """Read back the saved digests from a new connector that opens the same store."""
     connector.save_file_digest("/notes/a.txt", "digest-1")
-    connector.save_chunk_digest("/notes/a.txt", "chunk-1")
+    connector.save_chunk_digest("/notes/a.txt", "chunk-1", EMBEDDING)
     connector.close()
 
     reopened = SqliteConnector(SqliteSettings(path=database_path))
@@ -98,8 +100,8 @@ def test_save_then_reopen__data_persisted(database_path: Path, connector: Sqlite
 @pytest.mark.parametrize("digest", ["chunk-1", "chunk-2"])
 def test_save_chunk_digest__multiple_files__keeps_files_apart(connector: SqliteConnector, digest: str):
     """Keep the chunk digests of different files apart even when the digest is the same."""
-    connector.save_chunk_digest("/notes/a.txt", digest)
-    connector.save_chunk_digest("/notes/b.txt", digest)
+    connector.save_chunk_digest("/notes/a.txt", digest, EMBEDDING)
+    connector.save_chunk_digest("/notes/b.txt", digest, EMBEDDING)
 
     assert connector.get_chunk_digests("/notes/a.txt") == {digest}
     assert connector.get_chunk_digests("/notes/b.txt") == {digest}

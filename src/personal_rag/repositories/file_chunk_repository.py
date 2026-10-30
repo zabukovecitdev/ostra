@@ -18,14 +18,15 @@ class FileChunkRepository:
         """
         return self._connector.get_chunk_digests(file_path=file_path)
 
-    def save_chunk(self, file_path: str, digest: str) -> None:
-        """Insert a line digest or update the processed time of a stored digest.
+    def save_chunk(self, file_path: str, digest: str, embedding: list[float]) -> None:
+        """Insert a chunk digest and its embedding, or update both when the digest is already stored.
 
         Args:
             file_path: Location of the file.
-            digest: SHA-256 hex digest of the line.
+            digest: SHA-256 hex digest of the chunk.
+            embedding: The embedding vector of the chunk.
         """
-        self._connector.save_chunk_digest(file_path=file_path, digest=digest)
+        self._connector.save_chunk_digest(file_path=file_path, digest=digest, embedding=embedding)
 
     def delete_chunks(self, file_path: str, digests: set[str]) -> None:
         """Delete the stored digests that the file no longer has.

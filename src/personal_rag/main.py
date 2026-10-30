@@ -23,7 +23,8 @@ def main(argv: list[str] | None = None):
     arguments = _parse_arguments(argv)
     config = load_config()
     connector = SqliteConnector(SqliteSettings(path=config.database_path))
-    tokenizer = MxbaiEmbeddingModel(settings=OllamaSettings()).get_tokenizer()
+    embedding_model = MxbaiEmbeddingModel(settings=OllamaSettings())
+    tokenizer = embedding_model.get_tokenizer()
     DatabaseService(connector=connector).initialize()
     print(f"Database ready at {config.database_path}")
 
@@ -36,6 +37,7 @@ def main(argv: list[str] | None = None):
             chunk_overlap_tokens=config.chunk_overlap_tokens,
             count_tokens=tokenizer.count_tokens,
         ),
+        embedding_provider=embedding_model.get_embedding_provider(),
         reindex=arguments.reindex,
     )
     try:

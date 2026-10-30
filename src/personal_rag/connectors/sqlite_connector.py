@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -133,6 +134,26 @@ class SqliteConnector(VectorDatabaseConnector):
         row = connection.execute("SELECT digest FROM files WHERE file_path = ?", (file_path,)).fetchone()
         return row[0] if row else None
 
+    def get_chunk_embedding(self, file_path: str, digest: str) -> list[float] | None:
+        """Return the stored embedding of one chunk.
+
+        Args:
+            file_path: Location of the file.
+            digest: SHA-256 hex digest of the chunk.
+
+        Returns:
+            The embedding vector of the chunk, or None when the chunk is not stored.
+        """
+        connection = self.connect()
+        row = connection.execute(
+            "SELECT embedding FROM file_chunks WHERE file_path = ? AND digest = ?",
+            (file_path, digest),
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+
+        return list(struct.unpack(f"{len(row[0]) // 4}f", row[0]))
+
     def get_chunk_digests(self, file_path: str) -> set[str]:
         """Return the stored chunk digests of one file.
 
@@ -146,18 +167,20 @@ class SqliteConnector(VectorDatabaseConnector):
         rows = connection.execute("SELECT digest FROM file_chunks WHERE file_path = ?", (file_path,)).fetchall()
         return {row[0] for row in rows}
 
-    def save_chunk_digest(self, file_path: str, digest: str) -> None:
-        """Insert a chunk digest or update the processed time of a stored digest.
+    def save_chunk_digest(self, file_path: str, digest: str, embedding: list[float]) -> None:
+        """Insert a chunk digest and its embedding, or update both when the digest is already stored.
 
         Args:
             file_path: Location of the file.
             digest: SHA-256 hex digest of the chunk.
+            embedding: The embedding vector of the chunk, stored as float32 bytes.
         """
         connection = self.connect()
         connection.execute(
-            "INSERT INTO file_chunks (file_path, digest) VALUES (?, ?) "
-            "ON CONFLICT (file_path, digest) DO UPDATE SET processed_at = CURRENT_TIMESTAMP",
-            (file_path, digest),
+            "INSERT INTO file_chunks (file_path, digest, embedding) VALUES (?, ?, ?) "
+            "ON CONFLICT (file_path, digest) DO UPDATE SET "
+            "processed_at = CURRENT_TIMESTAMP, embedding = excluded.embedding",
+            (file_path, digest, sqlite_vec.serialize_float32(embedding)),
         )
         connection.commit()
 

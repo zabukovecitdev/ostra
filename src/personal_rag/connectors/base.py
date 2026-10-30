@@ -57,12 +57,13 @@ class VectorDatabaseConnector(ABC):
         """
 
     @abstractmethod
-    def save_chunk_digest(self, file_path: str, digest: str) -> None:
-        """Insert a chunk digest or update the processed time of a stored digest.
+    def save_chunk_digest(self, file_path: str, digest: str, embedding: list[float]) -> None:
+        """Insert a chunk digest and its embedding, or update both when the digest is already stored.
 
         Args:
             file_path: Location of the file.
             digest: SHA-256 hex digest of the chunk.
+            embedding: The embedding vector of the chunk.
         """
 
     @abstractmethod

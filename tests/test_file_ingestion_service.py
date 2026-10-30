@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from personal_rag.connectors.base import VectorDatabaseConnector
+from personal_rag.embeddings.base import EmbeddingProvider
 from personal_rag.hashing import hash_file, hash_text
 from personal_rag.repositories.file_chunk_repository import FileChunkRepository
 from personal_rag.repositories.file_repository import FileRepository
@@ -12,6 +13,18 @@ from personal_rag.services.file_service import FileService
 from personal_rag.services.text_chunker import TextChunker
 
 DATA_DIRECTORY = Path(__file__).parent / "data"
+
+
+class FakeEmbeddingProvider(EmbeddingProvider):
+    """Return a vector that depends on the text length and count the calls."""
+
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def get_embedding(self, text: str) -> list[float]:
+        """Record the text and return a three-value vector for it."""
+        self.calls.append(text)
+        return [float(len(text)), 0.5, 1.0]
 
 
 def one_token_per_word(word: str) -> int:
@@ -25,6 +38,7 @@ def make_service(
     reindex: bool = False,
     chunk_size_tokens: int = 510,
     chunk_overlap_tokens: int = 50,
+    embedding_provider: EmbeddingProvider | None = None,
 ) -> FileIngestionService:
     """Build an ingestion service that reads one directory and stores results through the connector."""
     return FileIngestionService(
@@ -36,6 +50,7 @@ def make_service(
             chunk_overlap_tokens=chunk_overlap_tokens,
             count_tokens=one_token_per_word,
         ),
+        embedding_provider=embedding_provider or FakeEmbeddingProvider(),
         reindex=reindex,
     )
 
@@ -108,7 +123,7 @@ def test_process_files__run_stopped_after_first_chunk__resumes_at_next_chunk(con
     """Skip the chunks that a stopped run already saved and process the remaining chunks."""
     file_path = tmp_path / "a.txt"
     file_path.write_text("alpha\nbeta\ngamma\n")
-    FileChunkRepository(connector=connector).save_chunk(str(file_path), hash_text("alpha"))
+    FileChunkRepository(connector=connector).save_chunk(str(file_path), hash_text("alpha"), [0.1, 0.2, 0.3])
 
     make_service(connector, tmp_path, chunk_size_tokens=1, chunk_overlap_tokens=0).process_files()
 
@@ -215,3 +230,37 @@ def test_process_files__long_text_file__chunks_are_sized_and_overlap(connector, 
     assert all(previous[-20:] == current[:20] for previous, current in zip(chunks, chunks[1:], strict=False))
     assert chunks[-1][-10:] == words[-10:]
     assert len(stored_chunks(connector, file_path)) == len(chunks)
+
+
+def test_process_files__new_chunk__embeds_chunk_and_stores_vector(connector, tmp_path: Path):
+    """Embed each new chunk and store its vector with the chunk digest."""
+    file_path = tmp_path / "a.txt"
+    file_path.write_text("alpha\nbeta\n")
+    provider = FakeEmbeddingProvider()
+
+    make_service(connector, tmp_path, embedding_provider=provider).process_files()
+
+    assert provider.calls == ["alpha beta"]
+    assert connector.get_chunk_embedding(str(file_path), hash_text("alpha beta")) == [10.0, 0.5, 1.0]
+
+
+def test_process_files__second_run_unchanged__does_not_embed_again(connector, tmp_path: Path):
+    """Skip the embedding of chunks that a previous run already stored."""
+    (tmp_path / "a.txt").write_text("alpha\nbeta\n")
+    make_service(connector, tmp_path).process_files()
+    provider = FakeEmbeddingProvider()
+
+    make_service(connector, tmp_path, embedding_provider=provider).process_files()
+
+    assert provider.calls == []
+
+
+def test_process_files__reindex__embeds_every_chunk_again(connector, tmp_path: Path):
+    """Embed every chunk again on a reindex run."""
+    (tmp_path / "a.txt").write_text("alpha\nbeta\n")
+    make_service(connector, tmp_path).process_files()
+    provider = FakeEmbeddingProvider()
+
+    make_service(connector, tmp_path, reindex=True, embedding_provider=provider).process_files()
+
+    assert provider.calls == ["alpha beta"]
