@@ -1,3 +1,4 @@
+import argparse
 import logging
 
 from personal_rag.config import load_config
@@ -9,9 +10,14 @@ from personal_rag.services.file_ingestion_service import FileIngestionService
 from personal_rag.services.file_service import FileService
 
 
-def main():
-    """Prepare the local database, then process the configured files."""
+def main(argv: list[str] | None = None):
+    """Prepare the local database, then process the configured files.
+
+    Args:
+        argv: Command line arguments without the program name. Read sys.argv when None.
+    """
     logging.basicConfig(level=logging.INFO)
+    arguments = _parse_arguments(argv)
     config = load_config()
     connector = SqliteConnector(SqliteSettings(path=config.database_path))
     DatabaseService(connector=connector).initialize()
@@ -21,11 +27,30 @@ def main():
         file_service=FileService(directories=config.directories),
         file_repository=FileRepository(connector=connector),
         file_chunk_repository=FileChunkRepository(connector=connector),
+        reindex=arguments.reindex,
     )
     try:
         ingestion_service.process_files()
     finally:
         connector.close()
+
+
+def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
+    """Read the command line arguments.
+
+    Args:
+        argv: Command line arguments without the program name. Read sys.argv when None.
+
+    Returns:
+        The parsed arguments. The reindex attribute is True when the reindex flag is given.
+    """
+    parser = argparse.ArgumentParser(description="Process the configured text files into the local database.")
+    parser.add_argument(
+        "--reindex",
+        action="store_true",
+        help="Process every line again, including lines that a previous run already processed.",
+    )
+    return parser.parse_args(argv)
 
 
 if __name__ == "__main__":

@@ -10,12 +10,13 @@ from personal_rag.services.file_ingestion_service import FileIngestionService
 from personal_rag.services.file_service import FileService
 
 
-def make_service(connector: VectorDatabaseConnector, directory: Path) -> FileIngestionService:
+def make_service(connector: VectorDatabaseConnector, directory: Path, reindex: bool = False) -> FileIngestionService:
     """Build an ingestion service that reads one directory and stores results through the connector."""
     return FileIngestionService(
         file_service=FileService(directories=[directory]),
         file_repository=FileRepository(connector=connector),
         file_chunk_repository=FileChunkRepository(connector=connector),
+        reindex=reindex,
     )
 
 
@@ -137,3 +138,35 @@ def test_process_files__file_changed__updates_stored_file_digest(connector, tmp_
     service.process_files()
 
     assert connector.get_file_digest(str(file_path)) == hash_file(file_path)
+
+
+def test_process_files__reindex_and_unchanged_file__prints_every_line_again(connector, tmp_path: Path, capsys):
+    """Print every line again on a reindex run even when no line changed."""
+    (tmp_path / "a.txt").write_text("alpha\nbeta\n")
+    make_service(connector, tmp_path).process_files()
+    capsys.readouterr()
+
+    make_service(connector, tmp_path, reindex=True).process_files()
+
+    assert capsys.readouterr().out == "alpha\nbeta\n"
+
+
+def test_process_files__reindex_and_identical_lines__prints_the_line_once(connector, tmp_path: Path, capsys):
+    """Print a repeated line only once on a reindex run."""
+    (tmp_path / "a.txt").write_text("same\nsame\n")
+
+    make_service(connector, tmp_path, reindex=True).process_files()
+
+    assert capsys.readouterr().out == "same\n"
+
+
+def test_process_files__reindex_and_line_removed__deletes_its_digest(connector, tmp_path: Path):
+    """Delete the stored digest of a removed line on a reindex run."""
+    file_path = tmp_path / "a.txt"
+    file_path.write_text("alpha\nbeta\n")
+    make_service(connector, tmp_path).process_files()
+    file_path.write_text("alpha\n")
+
+    make_service(connector, tmp_path, reindex=True).process_files()
+
+    assert stored_chunks(connector, file_path) == {hash_line("alpha\n")}
