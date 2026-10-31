@@ -99,6 +99,18 @@ make check            # lint, format check and tests
 make help             # list every target
 ```
 
+## Background indexing (Linux)
+
+`ostra-daemon` indexes the configured folders in a loop. It reads the config file again on each run. It writes the result of the last run to `status.json` in the user data folder.
+
+| Command | Effect |
+|---|---|
+| `ostra-daemon` | Run the loop in the foreground. Default interval is 15 minutes. |
+| `ostra-daemon install --interval 10` | Install and start a systemd user service |
+| `ostra-daemon uninstall` | Stop and remove the service |
+
+The SQLite database uses write-ahead logging, so `ostra search` works while the daemon writes.
+
 ## Testing
 
 ```bash

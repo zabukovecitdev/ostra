@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 
 from ostra.embeddings.base import EmbeddingProvider
@@ -19,6 +20,7 @@ class FileIngestionService:
         chunker: TextChunker,
         embedding_provider: EmbeddingProvider,
         reindex: bool,
+        on_file_processed: Callable[[Path], None] | None = None,
     ):
         self._file_service = file_service
         self._file_repository = file_repository
@@ -26,11 +28,17 @@ class FileIngestionService:
         self._chunker = chunker
         self._embedding_provider = embedding_provider
         self._reindex = reindex
+        self._on_file_processed = on_file_processed
 
     def process_files(self) -> None:
-        """Process each text file in the configured directories, one file at a time."""
+        """Process each text file in the configured directories, one file at a time.
+
+        Call the on_file_processed callback after each file, when one is set.
+        """
         for file_path in self._file_service.stream_files():
             self._process_file(file_path)
+            if self._on_file_processed is not None:
+                self._on_file_processed(file_path)
 
     def _process_file(self, file_path: Path) -> None:
         """Save the file digest, then embed and store each chunk whose digest is not stored.

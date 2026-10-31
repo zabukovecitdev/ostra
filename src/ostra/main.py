@@ -6,14 +6,11 @@ from pathlib import Path
 from ostra.config import load_config
 from ostra.connectors.database_facade import DatabaseBackend, DatabaseFacade
 from ostra.embeddings.ollama_embedding_provider import OllamaSettings
+from ostra.indexing import build_ingestion_service
 from ostra.models.mxbai_embedding_model import MxbaiEmbeddingModel
 from ostra.repositories.file_chunk_repository import FileChunkRepository
-from ostra.repositories.file_repository import FileRepository
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.database_service import DatabaseService
-from ostra.services.file_ingestion_service import FileIngestionService
-from ostra.services.file_service import FileService
-from ostra.services.text_chunker import TextChunker
 
 DEFAULT_SEARCH_LIMIT = 5
 MAX_SHORT_TEXT_CHARACTERS = 300
@@ -72,18 +69,12 @@ def _index_files(arguments, config, connector, embedding_model) -> None:
         connector: The database connector that stores the chunks.
         embedding_model: The embedding model and its tokenizer.
     """
-    tokenizer = embedding_model.get_tokenizer()
-    directories = [path.expanduser() for path in arguments.directory] if arguments.directory else config.directories
-    ingestion_service = FileIngestionService(
-        file_service=FileService(directories=directories),
-        file_repository=FileRepository(connector=connector),
-        file_chunk_repository=FileChunkRepository(connector=connector),
-        chunker=TextChunker(
-            chunk_size_tokens=config.chunk_size_tokens,
-            chunk_overlap_tokens=config.chunk_overlap_tokens,
-            count_tokens=tokenizer.count_tokens,
-        ),
-        embedding_provider=embedding_model.get_embedding_provider(),
+    directories = [path.expanduser() for path in arguments.directory] if arguments.directory else None
+    ingestion_service = build_ingestion_service(
+        config=config,
+        connector=connector,
+        embedding_model=embedding_model,
+        directories=directories,
         reindex=arguments.reindex,
     )
     ingestion_service.process_files()

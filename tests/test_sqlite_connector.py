@@ -200,3 +200,13 @@ def test_migrate__migration_logged__logs_each_applied_version(tmp_path: Path, ca
         "Applying migration. Version=004_add_chunk_embedding",
         "Applying migration. Version=005_create_chunk_vectors",
     ]
+
+
+def test_connect__database_opened__uses_write_ahead_logging(tmp_path: Path):
+    """Turn on WAL mode so a reader does not block on a writer."""
+    connector = SqliteConnector(SqliteSettings(path=tmp_path / "ostra.db"))
+
+    mode = connector.connect().execute("PRAGMA journal_mode").fetchone()[0]
+    connector.close()
+
+    assert mode == "wal"

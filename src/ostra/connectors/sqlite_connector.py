@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 OWNER_ONLY_DIRECTORY_MODE = 0o700
 OWNER_ONLY_FILE_MODE = 0o600
+# A reader waits this long for a writer lock before it fails.
+BUSY_TIMEOUT_SECONDS = 30
 SQLITE_MIGRATIONS_DIRECTORY = Path(__file__).parent / "sqlite_migrations"
 CREATE_SCHEMA_MIGRATIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -63,12 +65,14 @@ class SqliteConnector(VectorDatabaseConnector):
         """Open a connection with the sqlite-vec extension loaded.
 
         Reuse the open connection when one exists. Disable extension loading again after the load.
+        Turn on write-ahead logging, so one process can read while another process writes.
 
         Returns:
             An open connection with the sqlite-vec functions available.
         """
         if self._connection is None:
-            connection = sqlite3.connect(self._settings.path)
+            connection = sqlite3.connect(self._settings.path, timeout=BUSY_TIMEOUT_SECONDS)
+            connection.execute("PRAGMA journal_mode=WAL")
             connection.enable_load_extension(True)
             sqlite_vec.load(connection)
             connection.enable_load_extension(False)
