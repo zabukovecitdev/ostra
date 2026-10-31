@@ -30,10 +30,14 @@ dependencies = [
 chroma = [
     "chromadb>=1.5.9",
 ]
+gui = [
+    "nicegui>=3",
+]
 
 [project.scripts]
 ostra = "ostra.main:main"
 ostra-daemon = "ostra.daemon:main"
+ostra-app = "ostra.gui.app:main"
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]

@@ -10,8 +10,10 @@ from ostra.config import (
     DEFAULT_CHUNK_SIZE_TOKENS,
     DEFAULT_CONFIG_PATH,
     DEFAULT_DATABASE_PATH,
+    AppConfig,
     default_config_path,
     load_config,
+    save_config,
 )
 from ostra.connectors.database_facade import DatabaseBackend
 
@@ -207,3 +209,18 @@ def test_load_config__backend_not_supported__raises_value_error(tmp_path: Path):
 
     with pytest.raises(ValueError, match="database_backend must be one of sqlite, chroma"):
         load_config(config_path)
+
+
+def test_save_config__settings_saved__load_config_returns_same_settings(tmp_path: Path):
+    """Read back the settings that were written."""
+    config_path = tmp_path / "config.json"
+    config = AppConfig(
+        database_path=tmp_path / "db.sqlite",
+        directories=[tmp_path / "notes"],
+        chunk_size_tokens=200,
+        chunk_overlap_tokens=20,
+    )
+
+    save_config(config, config_path)
+
+    assert load_config(config_path) == config

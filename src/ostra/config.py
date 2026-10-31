@@ -147,25 +147,52 @@ def _read_int(raw_config: dict, key: str, default: int, config_path: Path) -> in
     return value
 
 
+def save_config(config: AppConfig, config_path: Path | None = None) -> None:
+    """Write the application settings to the JSON config file with owner-only permissions.
+
+    Replace the existing file. Create the parent directory when it is missing.
+
+    Args:
+        config: The settings to write.
+        config_path: Location of the JSON config file. Defaults to the path from default_config_path.
+    """
+    if config_path is None:
+        config_path = default_config_path()
+
+    _write_config_file(
+        config_path,
+        {
+            "database_path": str(config.database_path),
+            "directories": [str(directory) for directory in config.directories],
+            "database_backend": config.database_backend.value,
+            "chunk_size_tokens": config.chunk_size_tokens,
+            "chunk_overlap_tokens": config.chunk_overlap_tokens,
+        },
+    )
+
+
 def _write_default_config(config_path: Path) -> None:
     """Write the default settings to a new config file with owner-only permissions.
-
-    Create the parent directory when it is missing. Set owner-only permissions on the directory and the file.
 
     Args:
         config_path: Location of the JSON config file to create.
     """
+    save_config(AppConfig(database_path=DEFAULT_DATABASE_PATH), config_path)
+
+
+def _write_config_file(config_path: Path, values: dict) -> None:
+    """Write values as JSON to the config file with owner-only permissions.
+
+    Create the parent directory when it is missing. Set owner-only permissions on the directory and the file.
+
+    Args:
+        config_path: Location of the JSON config file.
+        values: The JSON object to write.
+    """
     config_path.parent.mkdir(mode=OWNER_ONLY_DIRECTORY_MODE, parents=True, exist_ok=True)
     config_path.parent.chmod(OWNER_ONLY_DIRECTORY_MODE)
 
-    default_config = {
-        "database_path": str(DEFAULT_DATABASE_PATH),
-        "directories": [str(directory) for directory in default_directories()],
-        "database_backend": DEFAULT_DATABASE_BACKEND.value,
-        "chunk_size_tokens": DEFAULT_CHUNK_SIZE_TOKENS,
-        "chunk_overlap_tokens": DEFAULT_CHUNK_OVERLAP_TOKENS,
-    }
     file_descriptor = os.open(config_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, OWNER_ONLY_FILE_MODE)
     with os.fdopen(file_descriptor, "w") as config_file:
-        json.dump(default_config, config_file, indent=2)
+        json.dump(values, config_file, indent=2)
         config_file.write("\n")

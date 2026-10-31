@@ -111,6 +111,17 @@ make help             # list every target
 
 The SQLite database uses write-ahead logging, so `ostra search` works while the daemon writes.
 
+## Desktop interface
+
+A local web interface has a search page and a config page. The config page edits the folders, database path, backend and chunk sizes. It also shows the result of the last background run.
+
+```bash
+uv tool install 'ostra[gui]'
+ostra-app                     # opens http://127.0.0.1:8765
+```
+
+The interface listens on the local machine only.
+
 ## Testing
 
 ```bash
