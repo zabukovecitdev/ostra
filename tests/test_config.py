@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from platformdirs import user_data_path, user_documents_path
+from platformdirs import user_data_path
 
 from ostra.config import (
     DEFAULT_CHUNK_OVERLAP_TOKENS,
@@ -19,25 +19,26 @@ from ostra.connectors.database_facade import DatabaseBackend
 
 
 def test_load_config__config_file_missing__returns_default_settings(tmp_path: Path):
-    """Return the default database path and the Documents directory when the config file does not exist."""
+    """Return the default database path and no folders when the config file does not exist."""
     config = load_config(tmp_path / "ostra" / "config.json")
 
     assert config.database_path == DEFAULT_DATABASE_PATH
-    assert config.directories == [user_documents_path()]
+    assert config.directories == []
 
 
 def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp_path: Path):
-    """Create the config file with the default database path and the Documents directory."""
+    """Create the config file with the default database path and an empty folder list."""
     config_path = tmp_path / "ostra" / "config.json"
 
     load_config(config_path)
 
     assert json.loads(config_path.read_text()) == {
         "database_path": str(DEFAULT_DATABASE_PATH),
-        "directories": [str(user_documents_path())],
+        "directories": [],
         "database_backend": "sqlite",
         "chunk_size_tokens": 510,
         "chunk_overlap_tokens": 50,
+        "embedding_provider": "ollama",
     }
 
 
@@ -102,14 +103,14 @@ def test_load_config__directories_set__returns_configured_directories(tmp_path: 
     assert config.directories == [Path("/data/notes"), Path.home() / "Projects"]
 
 
-def test_load_config__directories_key_missing__returns_documents_directory(tmp_path: Path):
-    """Return the Documents directory when the config file has no directories key."""
+def test_load_config__directories_key_missing__returns_no_directories(tmp_path: Path):
+    """Return no folders when the config file has no directories key."""
     config_path = tmp_path / "config.json"
     config_path.write_text("{}")
 
     config = load_config(config_path)
 
-    assert config.directories == [user_documents_path()]
+    assert config.directories == []
 
 
 def test_load_config__directories_not_a_list__raises_value_error(tmp_path: Path):
@@ -224,3 +225,28 @@ def test_save_config__settings_saved__load_config_returns_same_settings(tmp_path
     save_config(config, config_path)
 
     assert load_config(config_path) == config
+
+
+def test_load_config__ollama_base_url_set__returns_url(tmp_path: Path):
+    """Return the Ollama server address from the config file."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"ollama_base_url": "http://gpu-box:11434"}))
+
+    assert load_config(config_path).ollama_base_url == "http://gpu-box:11434"
+
+
+def test_load_config__ollama_base_url_missing__returns_none(tmp_path: Path):
+    """Return no address when the config file has no ollama_base_url key."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}")
+
+    assert load_config(config_path).ollama_base_url is None
+
+
+def test_load_config__unknown_provider__raises_value_error(tmp_path: Path):
+    """Reject a provider name that is not supported."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"embedding_provider": "magic"}))
+
+    with pytest.raises(ValueError, match="embedding_provider"):
+        load_config(config_path)

@@ -3,11 +3,10 @@ import json
 import logging
 from pathlib import Path
 
-from ostra.config import load_config
+from ostra.config import NO_DIRECTORIES_MESSAGE, load_config
 from ostra.connectors.database_facade import DatabaseBackend, DatabaseFacade
-from ostra.embeddings.ollama_embedding_provider import OllamaSettings
 from ostra.indexing import build_ingestion_service
-from ostra.models.mxbai_embedding_model import MxbaiEmbeddingModel
+from ostra.models.factory import build_embedding_model
 from ostra.repositories.file_chunk_repository import FileChunkRepository
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.database_service import DatabaseService
@@ -34,7 +33,7 @@ def main(argv: list[str] | None = None):
     config = load_config()
     backend = arguments.database or config.database_backend
     connector = DatabaseFacade(backend=backend, database_path=config.database_path)
-    embedding_model = MxbaiEmbeddingModel(settings=OllamaSettings())
+    embedding_model = build_embedding_model(config)
     DatabaseService(connector=connector).initialize()
 
     try:
@@ -70,6 +69,10 @@ def _index_files(arguments, config, connector, embedding_model) -> None:
         embedding_model: The embedding model and its tokenizer.
     """
     directories = [path.expanduser() for path in arguments.directory] if arguments.directory else None
+    if not (directories or config.directories):
+        print(NO_DIRECTORIES_MESSAGE)
+        return
+
     ingestion_service = build_ingestion_service(
         config=config,
         connector=connector,

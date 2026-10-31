@@ -1,8 +1,7 @@
 from ostra.config import AppConfig
 from ostra.connectors.base import ChunkMatch
 from ostra.connectors.database_facade import DatabaseFacade
-from ostra.embeddings.ollama_embedding_provider import OllamaSettings
-from ostra.models.mxbai_embedding_model import MxbaiEmbeddingModel
+from ostra.models.factory import build_embedding_model
 from ostra.repositories.file_chunk_repository import FileChunkRepository
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.database_service import DatabaseService
@@ -24,7 +23,7 @@ def search_chunks(config: AppConfig, query: str, limit: int, max_distance: float
     try:
         DatabaseService(connector=connector).initialize()
         service = ChunkSearchService(
-            embedding_provider=MxbaiEmbeddingModel(settings=OllamaSettings()).get_embedding_provider(),
+            embedding_provider=build_embedding_model(config).get_embedding_provider(),
             file_chunk_repository=FileChunkRepository(connector=connector),
         )
         matches = service.search(query=query, limit=limit)

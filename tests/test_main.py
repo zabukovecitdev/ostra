@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ostra import main
-from ostra.config import AppConfig
+from ostra.config import NO_DIRECTORIES_MESSAGE, AppConfig
 from ostra.connectors.database_facade import DatabaseBackend
 from ostra.embeddings.base import EmbeddingProvider
 from ostra.models.base import EmbeddingModel
@@ -43,7 +43,7 @@ class FakeEmbeddingModel(EmbeddingModel):
 @pytest.fixture(autouse=True)
 def fake_embedding_model(monkeypatch: pytest.MonkeyPatch):
     """Replace the embedding model that main creates with the fake model for every test."""
-    monkeypatch.setattr(main, "MxbaiEmbeddingModel", lambda settings: FakeEmbeddingModel())
+    monkeypatch.setattr(main, "build_embedding_model", lambda config: FakeEmbeddingModel())
 
 
 def test_main__database_ready__prints_backend_name(
@@ -55,7 +55,7 @@ def test_main__database_ready__prints_backend_name(
 
     main.main(["index"])
 
-    assert capsys.readouterr().out == "Database ready. Backend=sqlite\n"
+    assert capsys.readouterr().out == f"Database ready. Backend=sqlite\n{NO_DIRECTORIES_MESSAGE}\n"
     assert database_path.is_file()
 
 
@@ -157,7 +157,7 @@ def test_main__database_flag_chroma__creates_chroma_store_beside_database(
 
     main.main(["index", "--database", "chroma"])
 
-    assert capsys.readouterr().out == "Database ready. Backend=chroma\n"
+    assert capsys.readouterr().out == f"Database ready. Backend=chroma\n{NO_DIRECTORIES_MESSAGE}\n"
     assert (tmp_path / "chroma").is_dir()
     assert not (tmp_path / "ostra.db").exists()
 
@@ -178,7 +178,7 @@ def test_main__config_selects_chroma__uses_chroma_backend(
 
     main.main(["index"])
 
-    assert capsys.readouterr().out == "Database ready. Backend=chroma\n"
+    assert capsys.readouterr().out == f"Database ready. Backend=chroma\n{NO_DIRECTORIES_MESSAGE}\n"
 
 
 def test_main__database_flag_unknown__exits_with_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -350,3 +350,14 @@ def test_main__search_max_distance_option__parses_float():
     arguments = main._build_parser().parse_args(["search", "alpha", "--max-distance", "0.4"])
 
     assert arguments.max_distance == 0.4
+
+
+def test_main__index_without_directories__prints_hint(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Tell the user to add folders when neither the config nor the command line names any."""
+    monkeypatch.setattr(main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db"))
+
+    main.main(["index"])
+
+    assert NO_DIRECTORIES_MESSAGE in capsys.readouterr().out

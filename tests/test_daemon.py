@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from ostra import daemon, service_manager
-from ostra.config import AppConfig
+from ostra.config import NO_DIRECTORIES_MESSAGE, AppConfig
 
 
 def test_index_once__config_fails__writes_error_to_status_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -29,7 +29,7 @@ def test_index_once__empty_directory__writes_status_without_error(tmp_path: Path
     notes.mkdir()
     config = AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
     monkeypatch.setattr(daemon, "load_config", lambda: config)
-    monkeypatch.setattr(daemon, "MxbaiEmbeddingModel", lambda settings: _FakeModel())
+    monkeypatch.setattr(daemon, "build_embedding_model", lambda config: _FakeModel())
     status_path = tmp_path / "status.json"
 
     daemon.index_once(status_path=status_path)
@@ -65,3 +65,16 @@ class _FakeModel:
 class _FakeTokenizer:
     def count_tokens(self, text: str) -> int:
         return len(text.split())
+
+
+def test_index_once__no_directories__writes_message_and_no_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Tell the user to add folders and report no error when the folder list is empty."""
+    config = AppConfig(database_path=tmp_path / "ostra.db")
+    monkeypatch.setattr(daemon, "load_config", lambda: config)
+    status_path = tmp_path / "status.json"
+
+    daemon.index_once(status_path=status_path)
+
+    status = json.loads(status_path.read_text())
+    assert status["error"] is None
+    assert status["message"] == NO_DIRECTORIES_MESSAGE

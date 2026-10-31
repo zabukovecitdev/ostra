@@ -33,6 +33,14 @@ body { background: var(--bg); color: var(--text);
 .ostra-muted { color: var(--muted); font-size: 0.85rem; }
 .ostra-score { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; font-size: 0.8rem;
   padding: 2px 10px; border-radius: 999px; }
+.ostra-welcome { min-height: 70vh; align-items: center; justify-content: center; gap: 28px; }
+.ostra-welcome-button { width: 240px; height: 240px; border-radius: 20px; font-size: 1.1rem; font-weight: 600;
+  background: var(--accent-soft) !important; color: var(--accent-text) !important; border: 1px solid var(--accent); }
+.ostra-welcome-button .q-icon { font-size: 3.5rem; margin-bottom: 12px; }
+.ostra-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+.ostra-dot--ok { background: #16a34a; }
+.ostra-dot--bad { background: #dc2626; }
+.ostra-link { color: var(--accent); }
 .ostra-text { white-space: pre-wrap; line-height: 1.55; }
 """
 

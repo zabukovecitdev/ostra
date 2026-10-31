@@ -7,11 +7,10 @@ from pathlib import Path
 
 from platformdirs import user_data_path
 
-from ostra.config import APP_NAME, load_config
+from ostra.config import APP_NAME, NO_DIRECTORIES_MESSAGE, AppConfig, load_config
 from ostra.connectors.database_facade import DatabaseFacade
-from ostra.embeddings.ollama_embedding_provider import OllamaSettings
 from ostra.indexing import build_ingestion_service
-from ostra.models.mxbai_embedding_model import MxbaiEmbeddingModel
+from ostra.models.factory import build_embedding_model
 from ostra.service_manager import install_service, uninstall_service
 from ostra.services.database_service import DatabaseService
 
@@ -63,19 +62,13 @@ def index_once(status_path: Path = STATUS_PATH) -> None:
     started_at = datetime.now(UTC)
     processed_files = []
     error = None
+    message = None
     try:
         config = load_config()
-        connector = DatabaseFacade(backend=config.database_backend, database_path=config.database_path)
-        try:
-            DatabaseService(connector=connector).initialize()
-            build_ingestion_service(
-                config=config,
-                connector=connector,
-                embedding_model=MxbaiEmbeddingModel(settings=OllamaSettings()),
-                on_file_processed=processed_files.append,
-            ).process_files()
-        finally:
-            connector.close()
+        if config.directories:
+            _index_directories(config, processed_files)
+        else:
+            message = NO_DIRECTORIES_MESSAGE
     except Exception as exception:
         logger.exception("Indexing run failed.")
         error = str(exception)
@@ -87,8 +80,29 @@ def index_once(status_path: Path = STATUS_PATH) -> None:
             "finished_at": datetime.now(UTC).isoformat(),
             "files_processed": len(processed_files),
             "error": error,
+            "message": message,
         },
     )
+
+
+def _index_directories(config: AppConfig, processed_files: list[Path]) -> None:
+    """Embed and store the chunks of the configured folders.
+
+    Args:
+        config: The application settings.
+        processed_files: List that receives the path of each processed file.
+    """
+    connector = DatabaseFacade(backend=config.database_backend, database_path=config.database_path)
+    try:
+        DatabaseService(connector=connector).initialize()
+        build_ingestion_service(
+            config=config,
+            connector=connector,
+            embedding_model=build_embedding_model(config),
+            on_file_processed=processed_files.append,
+        ).process_files()
+    finally:
+        connector.close()
 
 
 def _write_status(status_path: Path, status: dict) -> None:

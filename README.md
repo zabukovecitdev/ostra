@@ -51,6 +51,7 @@ The layers depend on abstract classes, so a new embedding model or storage backe
 
 ```bash
 uv sync
+# add your folders to "directories" in the config file, or use the config page of ostra-app
 make run                      # process the configured folders
 make search QUERY="solar system" LIMIT=3
 ```
@@ -63,9 +64,11 @@ The config file is `config.json` in your user config folder, for example `~/.con
 |---|---|---|
 | `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. The Chroma store is a `chroma` folder beside it. |
 | `database_backend` | `sqlite` | `sqlite` or `chroma`. Chroma needs the extra: `pip install 'ostra[chroma]'` |
-| `directories` | your Documents folder | Folders to process. Only top-level `.txt`, `.md` and `.csv` files are read. |
+| `directories` | none | Folders to process. Add at least one before the first run. Only top-level `.txt`, `.md` and `.csv` files are read. |
 | `chunk_size_tokens` | `510` | Tokens per chunk. The model's 512-token input includes two special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
+| `embedding_provider` | `ollama` | The service that creates embeddings. Ollama is the only provider now. |
+| `ollama_base_url` | not set | Address of the Ollama server, for example `http://192.168.1.20:11434`. It wins over `OLLAMA_BASE_URL`. The text of your files is sent to this server. |
 
 The Ollama server and model come from environment variables:
 
@@ -120,7 +123,7 @@ uv tool install 'ostra[gui]'
 ostra-app                     # opens http://127.0.0.1:8765
 ```
 
-The interface listens on the local machine only.
+On the first start, with no folders set, a welcome page shows one button that adds folders. It also shows whether Ollama and the model are ready, with a link to install them when they are not. The config page has a folder picker. The interface listens on the local machine only, so the picker lists the folders of the computer that runs it.
 
 ## Testing
 
