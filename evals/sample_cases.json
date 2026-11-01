@@ -1,0 +1,20 @@
+[
+  {"query": "How were books made before mechanical reproduction?", "relevant": [{"file": "printing_press_history.txt", "text": "Scribes copied each manuscript by hand"}]},
+  {"query": "Who invented clay type in medieval China?", "relevant": [{"file": "printing_press_history.txt", "text": "Bi Sheng"}]},
+  {"query": "What materials and tools did the German goldsmith combine for his system?", "relevant": [{"file": "printing_press_history.txt", "text": "a metal alloy that melted at a low temperature"}]},
+  {"query": "How many copies of the 1455 bible were produced?", "relevant": [{"file": "printing_press_history.txt", "text": "one hundred and eighty copies"}]},
+  {"query": "How quickly did presses appear in other European cities?", "relevant": [{"file": "printing_press_history.txt", "text": "more than two hundred cities"}]},
+  {"query": "How did Protestant reformers use cheap printed material?", "relevant": [{"file": "printing_press_history.txt", "text": "Reformers used pamphlets"}]},
+  {"query": "Where does modern copyright come from?", "relevant": [{"file": "printing_press_history.txt", "text": "modern copyright law"}]},
+  {"query": "Why did doctors in different towns benefit from engraved pictures?", "relevant": [{"file": "printing_press_history.txt", "text": "A physician in one city"}]},
+  {"query": "When did daily news sheets start?", "relevant": [{"file": "printing_press_history.txt", "text": "Newspapers emerged in the seventeenth century"}]},
+  {"query": "Which insects live in fast, oxygen-rich mountain streams?", "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "stoneflies and mayflies live in the riffles"}]},
+  {"query": "How does a cut-off meander lake form?", "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "Oxbow lakes form"}]},
+  {"query": "Why are trees on the bank good for trout?", "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "Shade from trees keeps the water cool"}]},
+  {"query": "What stops salmon and other migrating fish from reaching spawning grounds?", "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "Barriers such as weirs and dams"}]},
+  {"query": "Which bird walks underwater along the stream bottom?", "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "Dippers walk along the bed"}]},
+  {"query": "What happens when fertilizer runoff feeds an algal bloom?", "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "bacteria use up the oxygen"}]},
+  {"query": "Which bugs show that a stream is polluted?", "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "Sensitive species such as caddisflies"}]},
+  {"query": "How can engineers undo channel straightening?", "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "Restoration projects"}]},
+  {"query": "How will global warming affect cold-water species?", "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "Species that depend on cold water"}]}
+]
