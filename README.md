@@ -126,13 +126,35 @@ ostra-app                     # opens http://127.0.0.1:8765
 
 On the first start, with no folders set, a welcome page shows one button that adds folders. It also shows whether Ollama and the model are ready, with a link to install them when they are not. The config page has a folder picker. The interface listens on the local machine only, so the picker lists the folders of the computer that runs it.
 
+## Evaluating retrieval
+
+`ostra eval` measures how well the search finds the right chunks. It reads a JSON test set. Each case has a query and the chunks that the search must return:
+
+```json
+[
+  {"query": "Which bird walks along the stream bottom?",
+   "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "Dippers walk along the bed"}]}
+]
+```
+
+A result matches when its file path ends with `file`. When `text` is set, the chunk must also contain it. Keep `text` short, so that it does not cross a chunk boundary.
+
+| Command | Effect |
+|---|---|
+| `ostra eval cases.json --limit 5` | Print the rank of each case, the hit rate, recall and MRR at 5, and the mean distance of relevant and other results |
+| `ostra eval cases.json --query-prefix "TEXT "` | Put a query instruction in front of each query, to compare instructions of the model |
+| `ostra eval cases.json --json` | Print the report as JSON |
+| `make eval-sample` | Index `tests/data` into a scratch folder and run `evals/sample_cases.json`. It needs a running Ollama. |
+
+Use the mean distances to choose `--max-distance`: set it between the relevant and the other distance. Run the same test set before and after you change the chunk size, the model or the search code.
+
 ## Testing
 
 ```bash
 make test
 ```
 
-The suite runs 161 tests. The storage contract tests and the ingestion tests run once for each backend. The tests do not call Ollama: they use a fake embedding model and a local tokenizer file.
+The suite runs 214 tests. The storage contract tests and the ingestion tests run once for each backend. The tests do not call Ollama: they use a fake embedding model and a local tokenizer file.
 
 ## Performance
 
