@@ -47,6 +47,8 @@ build-backend = "uv_build"
 dev = [
     "chromadb>=1.5.9",
     "mutmut>=3.8.1",
+    "mypy>=2.4.1",
+    "pre-commit>=4.7.0",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
 ]
@@ -64,3 +66,13 @@ testpaths = ["tests"]
 
 [tool.mutmut]
 source_paths = ["src/ostra/"]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["src"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["sqlite_vec"]
+ignore_missing_imports = true

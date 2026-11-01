@@ -60,7 +60,7 @@ def index_once(status_path: Path = STATUS_PATH) -> None:
         status_path: Location of the JSON status file.
     """
     started_at = datetime.now(UTC)
-    processed_files = []
+    processed_files: list[Path] = []
     error = None
     message = None
     try:

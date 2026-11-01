@@ -69,6 +69,9 @@ def search_page() -> None:
             state["busy"] = False
             spinner.set_visibility(False)
 
+        if matches is None:
+            return
+
         with results:
             if not matches:
                 ui.label("No matching chunks.")
@@ -137,6 +140,9 @@ def welcome_page() -> None:
             ui.label("Checking Ollama...").classes("ostra-muted")
 
         status = await run.io_bound(check_ollama, settings)
+        if status is None:
+            return
+
         status_box.clear()
         with status_box:
             if status.state == OllamaState.READY:

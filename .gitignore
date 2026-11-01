@@ -12,3 +12,8 @@ wheels/
 # Mutation testing
 mutants/
 .mutmut-cache
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

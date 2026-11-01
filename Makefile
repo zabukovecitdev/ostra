@@ -5,7 +5,7 @@ DIRECTORY_FLAG = $(if $(DIRECTORY),--directory $(DIRECTORY))
 
 .DEFAULT_GOAL := help
 
-.PHONY: help run reindex search test lint format check
+.PHONY: help run reindex search test lint format typecheck check hooks
 
 help: ## Show the available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
@@ -29,7 +29,14 @@ lint: ## Check the code with ruff
 format: ## Format the code with ruff
 	uv run ruff format .
 
-check: ## Run the lint, format check and tests
+typecheck: ## Check the types with mypy
+	uv run mypy
+
+check: ## Run the lint, format check, type check and tests
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run mypy
 	uv run pytest
+
+hooks: ## Install the git hooks (checks on commit, tests on push)
+	uv run pre-commit install --hook-type pre-commit --hook-type pre-push

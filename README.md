@@ -98,7 +98,8 @@ Makefile shortcuts:
 make run DIRECTORY=~/Documents/notes
 make reindex
 make search QUERY="transformer attention" LIMIT=3
-make check            # lint, format check and tests
+make check            # lint, format check, type check and tests
+make hooks            # install git hooks: checks on commit, tests on push
 make help             # list every target
 ```
 
