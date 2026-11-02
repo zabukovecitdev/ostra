@@ -7,7 +7,6 @@ from platformdirs import user_data_path
 
 from ostra.config import (
     DEFAULT_CHUNK_OVERLAP_TOKENS,
-    DEFAULT_CHUNK_SIZE_TOKENS,
     DEFAULT_CONFIG_PATH,
     DEFAULT_DATABASE_PATH,
     AppConfig,
@@ -15,7 +14,7 @@ from ostra.config import (
     load_config,
     save_config,
 )
-from ostra.connectors.database_facade import DatabaseBackend
+from ostra.store.database_backend import DatabaseBackend
 
 
 def test_load_config__config_file_missing__returns_default_settings(tmp_path: Path):
@@ -36,9 +35,9 @@ def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp
         "database_path": str(DEFAULT_DATABASE_PATH),
         "directories": [],
         "database_backend": "sqlite",
-        "chunk_size_tokens": 510,
         "chunk_overlap_tokens": 50,
         "embedding_provider": "ollama",
+        "embedding_model": "mxbai-embed-large",
     }
 
 
@@ -155,14 +154,14 @@ def test_default_config_path__legacy_file_missing__returns_user_config_path(
     assert default_config_path() == DEFAULT_CONFIG_PATH
 
 
-def test_load_config__chunk_settings_missing__returns_default_chunk_size_and_overlap(tmp_path: Path):
-    """Return a chunk size of 510 tokens and an overlap of 50 tokens when the config file has no chunk keys."""
+def test_load_config__chunk_settings_missing__returns_no_chunk_size_and_default_overlap(tmp_path: Path):
+    """Return no chunk size, so that the model default applies, and an overlap of 50 tokens."""
     config_path = tmp_path / "config.json"
     config_path.write_text("{}")
 
     config = load_config(config_path)
 
-    assert config.chunk_size_tokens == DEFAULT_CHUNK_SIZE_TOKENS == 510
+    assert config.chunk_size_tokens is None
     assert config.chunk_overlap_tokens == DEFAULT_CHUNK_OVERLAP_TOKENS == 50
 
 
@@ -250,3 +249,37 @@ def test_load_config__unknown_provider__raises_value_error(tmp_path: Path):
 
     with pytest.raises(ValueError, match="embedding_provider"):
         load_config(config_path)
+
+
+def test_load_config__embedding_model_missing__returns_default_model(tmp_path: Path):
+    """Keep an old config file working: it has no embedding_model key and gets mxbai-embed-large."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}")
+
+    assert load_config(config_path).embedding_model == "mxbai-embed-large"
+
+
+def test_load_config__embedding_model_unknown__raises_value_error_that_lists_supported_models(tmp_path: Path):
+    """Reject a model that is not in the registry."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"embedding_model": "magic"}))
+
+    with pytest.raises(ValueError, match="embedding_model must be one of mxbai-embed-large"):
+        load_config(config_path)
+
+
+def test_save_config__chunk_size_not_set__leaves_the_key_out(tmp_path: Path):
+    """Write no chunk size when the model default applies, so that a model change takes its own default."""
+    config_path = tmp_path / "config.json"
+
+    save_config(AppConfig(database_path=tmp_path / "db"), config_path)
+
+    assert "chunk_size_tokens" not in json.loads(config_path.read_text())
+
+
+def test_load_config__old_file_with_chunk_size_510__keeps_the_value(tmp_path: Path):
+    """Keep a chunk size that an earlier version wrote into the config file."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"chunk_size_tokens": 510}')
+
+    assert load_config(config_path).chunk_size_tokens == 510

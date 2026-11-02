@@ -2,17 +2,17 @@ import argparse
 import json
 import logging
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 from platformdirs import user_data_path
 
 from ostra.config import APP_NAME, NO_DIRECTORIES_MESSAGE, AppConfig, load_config
-from ostra.connectors.database_facade import DatabaseFacade
-from ostra.indexing import build_ingestion_service
+from ostra.indexing import run_indexing
 from ostra.models.factory import build_embedding_model
 from ostra.service_manager import install_service, uninstall_service
-from ostra.services.database_service import DatabaseService
+from ostra.store.open_chunk_store import open_chunk_store
 
 DEFAULT_INTERVAL_MINUTES = 15
 STATUS_PATH = user_data_path(APP_NAME) / "status.json"
@@ -50,7 +50,11 @@ def run_forever(interval_minutes: int) -> None:
         time.sleep(interval_minutes * 60)
 
 
-def index_once(status_path: Path = STATUS_PATH) -> None:
+def index_once(
+    status_path: Path = STATUS_PATH,
+    on_document_started: Callable[[str], None] | None = None,
+    on_document_processed: Callable[[str], None] | None = None,
+) -> None:
     """Index the configured folders one time and write the result to the status file.
 
     The config file is read again on each run, so setting changes apply to the next run.
@@ -58,15 +62,17 @@ def index_once(status_path: Path = STATUS_PATH) -> None:
 
     Args:
         status_path: Location of the JSON status file.
+        on_document_started: Callback that receives the ID of each document before its processing starts.
+        on_document_processed: Callback that receives the ID of each processed document.
     """
     started_at = datetime.now(UTC)
-    processed_files: list[Path] = []
+    processed_files: list[str] = []
     error = None
     message = None
     try:
         config = load_config()
         if config.directories:
-            _index_directories(config, processed_files)
+            _index_directories(config, processed_files, on_document_started, on_document_processed)
         else:
             message = NO_DIRECTORIES_MESSAGE
     except Exception as exception:
@@ -85,24 +91,35 @@ def index_once(status_path: Path = STATUS_PATH) -> None:
     )
 
 
-def _index_directories(config: AppConfig, processed_files: list[Path]) -> None:
+def _index_directories(
+    config: AppConfig,
+    processed_files: list[str],
+    on_document_started: Callable[[str], None] | None,
+    on_document_processed: Callable[[str], None] | None,
+) -> None:
     """Embed and store the chunks of the configured folders.
 
     Args:
         config: The application settings.
-        processed_files: List that receives the path of each processed file.
+        processed_files: List that receives the ID of each processed document.
+        on_document_started: Callback that receives the ID of each document before its processing starts.
+        on_document_processed: Callback that receives the ID of each processed document.
     """
-    connector = DatabaseFacade(backend=config.database_backend, database_path=config.database_path)
-    try:
-        DatabaseService(connector=connector).initialize()
-        build_ingestion_service(
+
+    def document_processed(document_id: str) -> None:
+        processed_files.append(document_id)
+        if on_document_processed is not None:
+            on_document_processed(document_id)
+
+    embedding_model = build_embedding_model(config)
+    with open_chunk_store(config.database_backend, config.database_path) as store:
+        run_indexing(
             config=config,
-            connector=connector,
-            embedding_model=build_embedding_model(config),
-            on_file_processed=processed_files.append,
-        ).process_files()
-    finally:
-        connector.close()
+            model_index=store.model_index(embedding_model.spec, create=True),
+            embedding_model=embedding_model,
+            on_document_processed=document_processed,
+            on_document_started=on_document_started,
+        )
 
 
 def _write_status(status_path: Path, status: dict) -> None:

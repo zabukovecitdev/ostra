@@ -4,12 +4,13 @@ import logging
 from pathlib import Path
 
 from ostra.config import NO_DIRECTORIES_MESSAGE, load_config
-from ostra.connectors.database_facade import DatabaseBackend, DatabaseFacade
-from ostra.indexing import build_ingestion_service
+from ostra.indexing import run_indexing
 from ostra.models.factory import build_embedding_model
-from ostra.repositories.file_chunk_repository import FileChunkRepository
+from ostra.models.registry import EMBEDDING_MODELS
 from ostra.services.chunk_search_service import ChunkSearchService
-from ostra.services.database_service import DatabaseService
+from ostra.store.database_backend import DatabaseBackend
+from ostra.store.model_index import ModelIndex
+from ostra.store.open_chunk_store import open_chunk_store
 
 DEFAULT_SEARCH_LIMIT = 5
 MAX_SHORT_TEXT_CHARACTERS = 300
@@ -32,11 +33,9 @@ def main(argv: list[str] | None = None):
 
     config = load_config()
     backend = arguments.database or config.database_backend
-    connector = DatabaseFacade(backend=backend, database_path=config.database_path)
-    embedding_model = build_embedding_model(config)
-    DatabaseService(connector=connector).initialize()
-
-    try:
+    embedding_model = build_embedding_model(config, model_id=arguments.model)
+    spec = embedding_model.spec
+    with open_chunk_store(backend, config.database_path) as store:
         if arguments.command == "search":
             _print_search_results(
                 query=arguments.query,
@@ -44,28 +43,26 @@ def main(argv: list[str] | None = None):
                 max_distance=arguments.max_distance,
                 full_text=arguments.full,
                 as_json=arguments.json,
-                embedding_provider=embedding_model.get_embedding_provider(),
-                file_chunk_repository=FileChunkRepository(connector=connector),
+                embedding_provider=embedding_model.provider,
+                model_index=store.model_index(spec, create=False),
             )
         else:
             print(f"Database ready. Backend={backend.value}")
             _index_files(
                 arguments=arguments,
                 config=config,
-                connector=connector,
+                model_index=store.model_index(spec, create=True),
                 embedding_model=embedding_model,
             )
-    finally:
-        connector.close()
 
 
-def _index_files(arguments, config, connector, embedding_model) -> None:
+def _index_files(arguments, config, model_index: ModelIndex, embedding_model) -> None:
     """Embed and store the new or changed chunks of the folders.
 
     Args:
         arguments: The parsed index arguments.
         config: The application settings.
-        connector: The database connector that stores the chunks.
+        model_index: The index that stores the chunks of the embedding model.
         embedding_model: The embedding model and its tokenizer.
     """
     directories = [path.expanduser() for path in arguments.directory] if arguments.directory else None
@@ -73,19 +70,16 @@ def _index_files(arguments, config, connector, embedding_model) -> None:
         print(NO_DIRECTORIES_MESSAGE)
         return
 
-    ingestion_service = build_ingestion_service(
+    run_indexing(
         config=config,
-        connector=connector,
+        model_index=model_index,
         embedding_model=embedding_model,
         directories=directories,
         reindex=arguments.reindex,
     )
-    ingestion_service.process_files()
 
 
-def _print_search_results(
-    query, limit, max_distance, full_text, as_json, embedding_provider, file_chunk_repository
-) -> None:
+def _print_search_results(query, limit, max_distance, full_text, as_json, embedding_provider, model_index) -> None:
     """Print the stored chunks that are closest to the query, nearest first.
 
     Args:
@@ -95,14 +89,10 @@ def _print_search_results(
         full_text: Print the whole text of each chunk instead of a shortened text.
         as_json: Print the chunks as a JSON list instead of plain text.
         embedding_provider: Provider that embeds the query.
-        file_chunk_repository: Repository that searches the stored chunks.
+        model_index: The index that searches the stored chunks.
     """
-    search_service = ChunkSearchService(
-        embedding_provider=embedding_provider, file_chunk_repository=file_chunk_repository
-    )
-    matches = search_service.search(query=query, limit=limit)
-    if max_distance is not None:
-        matches = [match for match in matches if match.distance <= max_distance]
+    search_service = ChunkSearchService(embedding_provider=embedding_provider, model_index=model_index)
+    matches = search_service.search(query=query, limit=limit, max_distance=max_distance)
 
     if as_json:
         print(json.dumps([_match_to_dict(match) for match in matches], ensure_ascii=False, indent=2))
@@ -113,7 +103,7 @@ def _print_search_results(
         return
 
     for match in matches:
-        print(f"match {round(_similarity(match.distance) * 100)}%  file={match.file_path}")
+        print(f"match {round(_similarity(match.distance) * 100)}%  file={match.document_id}")
         print(_shorten_text(match.text, full_text))
         print()
 
@@ -153,10 +143,13 @@ def _match_to_dict(match) -> dict:
         match: The chunk match from the search.
 
     Returns:
-        The file path, the distance, the similarity and the full text of the chunk.
+        The document ID, source, title, distance, similarity and full text of the chunk.
     """
     return {
-        "file_path": match.file_path,
+        "document_id": match.document_id,
+        "source": match.source,
+        "title": match.title,
+        "file_path": match.document_id,
         "distance": match.distance,
         "similarity": round(_similarity(match.distance), 4),
         "text": match.text,
@@ -179,6 +172,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=DatabaseBackend,
         choices=list(DatabaseBackend),
         help="Database backend to use. Overrides database_backend in the config file.",
+    )
+    shared.add_argument(
+        "--model",
+        choices=list(EMBEDDING_MODELS),
+        help="Embedding model to use. Overrides embedding_model in the config file.",
     )
 
     commands = parser.add_subparsers(dest="command", metavar="COMMAND")

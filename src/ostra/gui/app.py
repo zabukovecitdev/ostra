@@ -1,21 +1,26 @@
 import json
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
 from nicegui import run, ui
 
 from ostra.config import default_config_path, load_config, save_config
-from ostra.connectors.database_facade import DatabaseBackend
-from ostra.daemon import STATUS_PATH
+from ostra.daemon import STATUS_PATH, index_once
 from ostra.gui.folder_picker import FolderPicker
-from ostra.gui.ollama_status import INSTALL_URL, MODEL_URL, OllamaState, check_ollama, is_valid_server_url
+from ostra.gui.ollama_status import INSTALL_URL, OllamaState, check_ollama, is_valid_server_url, model_url
 from ostra.gui.search import search_chunks
 from ostra.gui.theme import BUTTON_PROPS, FIELD_PROPS, apply_theme
 from ostra.models.factory import ollama_settings
 from ostra.models.provider import EmbeddingProviderName
+from ostra.models.registry import EMBEDDING_MODELS, get_model_spec
+from ostra.store.database_backend import DatabaseBackend
 
 DEFAULT_PORT = 8765
 RESULT_LIMIT = 10
+
+# One run at a time for all browser tabs of this process.
+_indexing: dict = {"running": False, "current": None, "done": 0}
 
 
 def main() -> None:
@@ -79,7 +84,7 @@ def search_page() -> None:
                 with ui.card().classes("w-full").props(FIELD_PROPS).props("flat"):
                     with ui.row().classes("items-center gap-3"):
                         ui.label(f"{round((1 - match.distance) * 100)}%").classes("ostra-score")
-                        ui.label(match.file_path).classes("ostra-muted")
+                        ui.label(match.document_id).classes("ostra-muted")
                     ui.label(match.text).classes("ostra-text")
 
     with ui.column().classes("ostra-page"):
@@ -139,7 +144,8 @@ def welcome_page() -> None:
         with status_box:
             ui.label("Checking Ollama...").classes("ostra-muted")
 
-        status = await run.io_bound(check_ollama, settings)
+        ollama_model = get_model_spec(config.embedding_model).ollama_model
+        status = await run.io_bound(check_ollama, settings, ollama_model)
         if status is None:
             return
 
@@ -153,7 +159,7 @@ def welcome_page() -> None:
             if status.state == OllamaState.MODEL_MISSING:
                 _status_line(f"Model not installed: {status.model}", ok=False)
                 ui.label(f"Run on the server: ollama pull {status.model}").classes("ostra-muted")
-                ui.link("Model instructions", MODEL_URL, new_tab=True).classes("ostra-link")
+                ui.link("Model instructions", model_url(ollama_model), new_tab=True).classes("ostra-link")
             else:
                 _status_line(f"Ollama is not reachable at {settings.base_url}", ok=False)
                 ui.link("Install or start Ollama", INSTALL_URL, new_tab=True).classes("ostra-link")
@@ -181,6 +187,19 @@ def _status_line(text: str, ok: bool) -> None:
     with ui.row().classes("items-center no-wrap"):
         ui.element("span").classes("ostra-dot " + ("ostra-dot--ok" if ok else "ostra-dot--bad"))
         ui.label(text)
+
+
+def _read_status_error() -> str | None:
+    """Return the error of the last background indexing run.
+
+    Returns:
+        The error text, or None when the run succeeded or has not run.
+    """
+    status_path = Path(STATUS_PATH)
+    if not status_path.exists():
+        return None
+
+    return json.loads(status_path.read_text()).get("error")
 
 
 def _read_status() -> str:
@@ -249,7 +268,8 @@ def config_page() -> None:
             ui.notify("The Ollama address must start with http:// or https://", type="negative")
             return
 
-        if overlap_input.value >= chunk_size_input.value:
+        chunk_size = int(chunk_size_input.value)
+        if overlap_input.value >= chunk_size:
             ui.notify("Overlap must be smaller than the chunk size.", type="negative")
             return
 
@@ -259,7 +279,10 @@ def config_page() -> None:
                 database_path=Path(database_path_input.value).expanduser(),
                 directories=directories,
                 database_backend=DatabaseBackend(backend_input.value),
-                chunk_size_tokens=int(chunk_size_input.value),
+                embedding_model=model_input.value,
+                chunk_size_tokens=None
+                if chunk_size == get_model_spec(model_input.value).default_chunk_size_tokens
+                else chunk_size,
                 chunk_overlap_tokens=int(overlap_input.value),
                 embedding_provider=EmbeddingProviderName(provider_input.value),
                 ollama_base_url=url_input.value.strip() or None,
@@ -269,9 +292,50 @@ def config_page() -> None:
         if missing:
             ui.notify(f"Folders not found: {', '.join(missing)}", type="warning")
 
+    def show_progress() -> None:
+        """Show the document that is in progress and the number of finished documents."""
+        if _indexing["running"]:
+            progress.set_visibility(True)
+            progress_label.set_text(f"Indexing {_indexing['current'] or '...'}  ({_indexing['done']} done)")
+
+    async def index_now() -> None:
+        """Run one indexing pass with the saved settings and show the result."""
+        if _indexing["running"]:
+            ui.notify("Indexing is already running.", type="warning")
+            return
+
+        _indexing.update(running=True, current=None, done=0)
+        progress.set_visibility(True)
+        index_button.props("loading")
+        index_button.disable()
+        try:
+            await run.io_bound(
+                partial(
+                    index_once,
+                    on_document_started=lambda document_id: _indexing.update(current=document_id),
+                    on_document_processed=lambda _: _indexing.update(done=_indexing["done"] + 1),
+                )
+            )
+        finally:
+            _indexing["running"] = False
+            progress.set_visibility(False)
+            progress_label.set_text("")
+            index_button.props(remove="loading")
+            index_button.enable()
+
+        status_label.set_text(_read_status())
+        failed = bool(_read_status_error())
+        ui.notify(status_label.text, type="negative" if failed else "positive")
+
     with ui.column().classes("ostra-page"):
         ui.label(f"Config file: {default_config_path()}").classes("ostra-muted")
-        ui.label(_read_status()).classes("ostra-muted")
+        status_label = ui.label(_read_status()).classes("ostra-muted")
+        index_button = ui.button("Index now", icon="sync", on_click=index_now).props(BUTTON_PROPS)
+        ui.label("Indexes the saved settings. Save your changes first.").classes("ostra-muted")
+        progress = ui.linear_progress(show_value=False).props("indeterminate").classes("w-full")
+        progress.set_visibility(False)
+        progress_label = ui.label("").classes("ostra-muted")
+        ui.timer(0.3, show_progress)
         ui.label("Folders to index").classes("font-semibold")
         with ui.card().classes("w-full").props("flat"):
             folder_list()
@@ -282,6 +346,7 @@ def config_page() -> None:
             value=config.embedding_provider.value,
             label="Provider",
         ).props(FIELD_PROPS)
+        model_input = ui.select(list(EMBEDDING_MODELS), value=config.embedding_model, label="Model").props(FIELD_PROPS)
         url_input = (
             ui.input("Ollama server address", value=config.ollama_base_url or ollama_settings(config).base_url)
             .classes("w-full")
@@ -294,9 +359,12 @@ def config_page() -> None:
         backend_input = ui.select(
             [backend.value for backend in DatabaseBackend], value=config.database_backend.value, label="Backend"
         ).props(FIELD_PROPS)
-        chunk_size_input = ui.number("Chunk size (tokens)", value=config.chunk_size_tokens, min=1, precision=0).props(
-            FIELD_PROPS
-        )
+        chunk_size_input = ui.number(
+            "Chunk size (tokens)",
+            value=config.chunk_size_tokens or get_model_spec(config.embedding_model).default_chunk_size_tokens,
+            min=1,
+            precision=0,
+        ).props(FIELD_PROPS)
         overlap_input = ui.number(
             "Chunk overlap (tokens)", value=config.chunk_overlap_tokens, min=0, precision=0
         ).props(FIELD_PROPS)

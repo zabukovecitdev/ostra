@@ -6,18 +6,17 @@ from pathlib import Path
 
 from platformdirs import user_config_path, user_data_path
 
-from ostra.connectors.database_facade import DatabaseBackend
 from ostra.models.provider import EmbeddingProviderName
+from ostra.models.registry import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS
+from ostra.store.database_backend import DatabaseBackend
 
 APP_NAME = "ostra"
 # Earlier versions kept the config file here. An existing file at this path stays in use.
 LEGACY_CONFIG_PATH = Path.home() / "ostra" / "config.json"
 DEFAULT_CONFIG_PATH = user_config_path(APP_NAME) / "config.json"
 DEFAULT_DATABASE_PATH = user_data_path(APP_NAME) / "ostra.db"
-# The model accepts 512 tokens. Two of them are the special tokens [CLS] and [SEP].
 DEFAULT_DATABASE_BACKEND = DatabaseBackend.SQLITE
 DEFAULT_EMBEDDING_PROVIDER = EmbeddingProviderName.OLLAMA
-DEFAULT_CHUNK_SIZE_TOKENS = 510
 DEFAULT_CHUNK_OVERLAP_TOKENS = 50
 OWNER_ONLY_DIRECTORY_MODE = 0o700
 OWNER_ONLY_FILE_MODE = 0o600
@@ -47,9 +46,11 @@ class AppConfig:
     database_path: Path
     directories: list[Path] = field(default_factory=list)
     database_backend: DatabaseBackend = DEFAULT_DATABASE_BACKEND
-    chunk_size_tokens: int = DEFAULT_CHUNK_SIZE_TOKENS
+    # None means the default chunk size of the embedding model.
+    chunk_size_tokens: int | None = None
     chunk_overlap_tokens: int = DEFAULT_CHUNK_OVERLAP_TOKENS
     embedding_provider: EmbeddingProviderName = DEFAULT_EMBEDDING_PROVIDER
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
     # None means the OLLAMA_BASE_URL environment variable or the local default applies.
     ollama_base_url: str | None = None
 
@@ -91,8 +92,10 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         raise ValueError(f"Config key directories must be a list. Path={config_path}")
 
     directories = [Path(raw_directory).expanduser() for raw_directory in raw_directories]
-    chunk_size_tokens = _read_int(raw_config, "chunk_size_tokens", DEFAULT_CHUNK_SIZE_TOKENS, config_path)
+    chunk_size_tokens = _read_int(raw_config, "chunk_size_tokens", None, config_path)
     chunk_overlap_tokens = _read_int(raw_config, "chunk_overlap_tokens", DEFAULT_CHUNK_OVERLAP_TOKENS, config_path)
+    if chunk_overlap_tokens is None:
+        raise ValueError(f"Config key chunk_overlap_tokens must be an integer. Path={config_path}")
     database_backend = _read_database_backend(raw_config.get("database_backend", DEFAULT_DATABASE_BACKEND.value))
     ollama_base_url = raw_config.get("ollama_base_url")
     if ollama_base_url is not None and not isinstance(ollama_base_url, str):
@@ -107,6 +110,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         embedding_provider=_read_embedding_provider(
             raw_config.get("embedding_provider", DEFAULT_EMBEDDING_PROVIDER.value)
         ),
+        embedding_model=_read_embedding_model(raw_config.get("embedding_model", DEFAULT_EMBEDDING_MODEL)),
         ollama_base_url=ollama_base_url,
     )
 
@@ -151,22 +155,44 @@ def _read_embedding_provider(raw_provider: str) -> EmbeddingProviderName:
         ) from error
 
 
-def _read_int(raw_config: dict, key: str, default: int, config_path: Path) -> int:
+def _read_embedding_model(raw_model: str) -> str:
+    """Check the embedding_model config value.
+
+    Args:
+        raw_model: The value of the embedding_model key.
+
+    Returns:
+        The ID of the embedding model.
+
+    Raises:
+        ValueError: When the value does not name a supported model.
+    """
+    if raw_model not in EMBEDDING_MODELS:
+        supported = ", ".join(EMBEDDING_MODELS)
+        raise ValueError(f"Config key embedding_model must be one of {supported}. Model={raw_model}")
+
+    return raw_model
+
+
+def _read_int(raw_config: dict, key: str, default: int | None, config_path: Path) -> int | None:
     """Read an integer setting from the parsed config file.
 
     Args:
         raw_config: The parsed JSON object of the config file.
         key: The name of the setting.
-        default: The value to return when the key is missing.
+        default: The value to return when the key is missing. None means the key is optional.
         config_path: Location of the JSON config file, used in the error message.
 
     Returns:
-        The integer value of the setting.
+        The integer value of the setting, or None when the key is missing and the default is None.
 
     Raises:
         ValueError: When the value is not an integer.
     """
     value = raw_config.get(key, default)
+    if value is None:
+        return None
+
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"Config key {key} must be an integer. Path={config_path}")
 
@@ -189,10 +215,13 @@ def save_config(config: AppConfig, config_path: Path | None = None) -> None:
         "database_path": str(config.database_path),
         "directories": [str(directory) for directory in config.directories],
         "database_backend": config.database_backend.value,
-        "chunk_size_tokens": config.chunk_size_tokens,
         "chunk_overlap_tokens": config.chunk_overlap_tokens,
         "embedding_provider": config.embedding_provider.value,
+        "embedding_model": config.embedding_model,
     }
+    if config.chunk_size_tokens is not None:
+        values["chunk_size_tokens"] = config.chunk_size_tokens
+
     if config.ollama_base_url is not None:
         values["ollama_base_url"] = config.ollama_base_url
 

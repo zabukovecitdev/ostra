@@ -6,9 +6,10 @@ import pytest
 
 from ostra import main
 from ostra.config import NO_DIRECTORIES_MESSAGE, AppConfig
-from ostra.connectors.database_facade import DatabaseBackend
 from ostra.embeddings.base import EmbeddingProvider
-from ostra.models.base import EmbeddingModel
+from ostra.models.embedding_model import EmbeddingModel
+from ostra.models.registry import MXBAI_EMBED_LARGE
+from ostra.store.database_backend import DatabaseBackend
 from ostra.tokenization.base import Tokenizer
 
 
@@ -23,27 +24,22 @@ class FakeTokenizer(Tokenizer):
 class FakeEmbeddingProvider(EmbeddingProvider):
     """Return the same 1024-value vector for every text."""
 
-    def get_embedding(self, text: str) -> list[float]:
+    def _embed(self, text: str) -> list[float]:
         """Return a fixed vector."""
         return [0.5] * 1024
 
 
-class FakeEmbeddingModel(EmbeddingModel):
+def make_fake_model() -> EmbeddingModel:
     """Stand in for the Ollama model so that the tests do not call a server or download a tokenizer."""
-
-    def get_embedding_provider(self) -> EmbeddingProvider:
-        """Return the fake provider."""
-        return FakeEmbeddingProvider()
-
-    def get_tokenizer(self) -> Tokenizer:
-        """Return the fake tokenizer."""
-        return FakeTokenizer()
+    return EmbeddingModel(
+        spec=MXBAI_EMBED_LARGE, provider=FakeEmbeddingProvider(MXBAI_EMBED_LARGE), tokenizer=FakeTokenizer()
+    )
 
 
 @pytest.fixture(autouse=True)
 def fake_embedding_model(monkeypatch: pytest.MonkeyPatch):
     """Replace the embedding model that main creates with the fake model for every test."""
-    monkeypatch.setattr(main, "build_embedding_model", lambda config: FakeEmbeddingModel())
+    monkeypatch.setattr(main, "build_embedding_model", lambda config, model_id=None: make_fake_model())
 
 
 def test_main__database_ready__prints_backend_name(

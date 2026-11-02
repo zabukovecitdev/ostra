@@ -21,19 +21,20 @@ A local retrieval pipeline for personal text files. It splits each file into tok
 
 ```
 main.py                    command line entry point and wiring
-├── services/              ingestion, chunking, search, file discovery
-├── repositories/          domain operations on stored files and chunks
-├── connectors/            storage contract and its backends
-│   ├── base.py            VectorDatabaseConnector (abstract)
-│   ├── sqlite_connector.py  SQLite + sqlite-vec, versioned migrations
-│   ├── chroma_connector.py  Chroma persistent client
-│   └── database_facade.py   picks the backend from configuration
-├── embeddings/            EmbeddingProvider (abstract) and the Ollama implementation
-├── tokenization/          Tokenizer (abstract) and the mxbai implementation
-└── models/                EmbeddingModel (abstract) pairs a provider with its tokenizer
+├── sources/               DocumentSource (abstract) and the file system source
+├── pipeline/              ingestion pipeline (chunk, embed, store) and the queue runner
+├── services/              chunking, search, database setup
+├── store/                 ChunkStore and ModelIndex (abstract), one index for each embedding model
+│   ├── sqlite/            SQLite + sqlite-vec, versioned migrations
+│   └── chroma/            Chroma persistent client
+├── embeddings/            EmbeddingProvider (abstract, applies query and document prefixes), Vector, Ollama provider
+├── tokenization/          Tokenizer (abstract) and the tokenizer-file implementation
+└── models/                model registry (one spec for each model), EmbeddingModel bundle, factory
 ```
 
-The layers depend on abstract classes, so a new embedding model or storage backend means one new class and a change in one place. Replacing `mxbai-embed-large` with another model takes a subclass of `EmbeddingModel`, plus a `Tokenizer` if the new model uses a different tokenizer.
+A source reads documents in its own thread and puts them in a bounded queue. The pipeline takes them from the queue, and it does not know where they come from. A new source, such as notes or email, is one new `DocumentSource` class. The document ID is the key of the stored chunks. The file system source uses the file path.
+
+The layers depend on abstract classes, so a new embedding model or storage backend means one new class and a change in one place. A new model is one `EmbeddingModelSpec` in `models/registry.py` plus its `tokenizer.json` file under `tokenization/data/`.
 
 ## Requirements
 
@@ -43,6 +44,7 @@ The layers depend on abstract classes, so a new embedding model or storage backe
 
   ```bash
   ollama pull mxbai-embed-large
+  ollama pull bge-m3          # optional, for multilingual text
   ```
 
 - `make` (optional, for the shortcuts below)
@@ -65,17 +67,13 @@ The config file is `config.json` in your user config folder, for example `~/.con
 | `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. The Chroma store is a `chroma` folder beside it. |
 | `database_backend` | `sqlite` | `sqlite` or `chroma`. Chroma needs the extra: `pip install 'ostra[chroma]'` |
 | `directories` | none | Folders to process. Add at least one before the first run. Only top-level `.txt`, `.md` and `.csv` files are read. |
-| `chunk_size_tokens` | `510` | Tokens per chunk. The model's 512-token input includes two special tokens. |
+| `chunk_size_tokens` | not set | Tokens per chunk. When not set, the default of the embedding model applies (510 for mxbai-embed-large). The value must fit the model input after its special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
 | `embedding_provider` | `ollama` | The service that creates embeddings. Ollama is the only provider now. |
+| `embedding_model` | `mxbai-embed-large` | The embedding model: `mxbai-embed-large` or `bge-m3`. Use `bge-m3` for non-English text such as Slovene. Each model has its own index in the database, so vectors of two models never mix. `ostra index --model ID` and `ostra search --model ID` override it for one run. |
 | `ollama_base_url` | not set | Address of the Ollama server, for example `http://192.168.1.20:11434`. It wins over `OLLAMA_BASE_URL`. The text of your files is sent to this server. |
 
-The Ollama server and model come from environment variables:
-
-| Variable | Default |
-|---|---|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` |
-| `OLLAMA_MODEL` | `mxbai-embed-large:latest` |
+The Ollama server address comes from the `OLLAMA_BASE_URL` environment variable (default `http://localhost:11434`) unless `ollama_base_url` is set. The model name comes from the model registry. The old `OLLAMA_MODEL` variable is not used any more, and ostra stops with an error when it is set.
 
 ## Usage
 
@@ -117,7 +115,7 @@ The SQLite database uses write-ahead logging, so `ostra search` works while the 
 
 ## Desktop interface
 
-A local web interface has a search page and a config page. The config page edits the folders, database path, backend and chunk sizes. It also shows the result of the last background run.
+A local web interface has a search page and a config page. The config page edits the folders, database path, backend and chunk sizes. It also shows the result of the last background run. The **Index now** button starts one indexing run at once with the saved settings, and it shows the result when the run ends.
 
 ```bash
 uv tool install 'ostra[gui]'
