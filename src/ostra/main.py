@@ -1,9 +1,12 @@
 import argparse
 import json
 import logging
+from dataclasses import asdict
 from pathlib import Path
 
 from ostra.config import NO_DIRECTORIES_MESSAGE, load_config
+from ostra.evaluation.evaluation_cases import load_evaluation_cases
+from ostra.evaluation.retrieval_evaluator import RetrievalEvaluator
 from ostra.indexing import run_indexing
 from ostra.models.factory import build_embedding_model
 from ostra.models.registry import EMBEDDING_MODELS
@@ -36,7 +39,18 @@ def main(argv: list[str] | None = None):
     embedding_model = build_embedding_model(config, model_id=arguments.model)
     spec = embedding_model.spec
     with open_chunk_store(backend, config.database_path) as store:
-        if arguments.command == "search":
+        if arguments.command == "eval":
+            _print_evaluation(
+                cases_path=arguments.cases,
+                limit=arguments.limit,
+                query_prefix=arguments.query_prefix,
+                as_json=arguments.json,
+                search_service=ChunkSearchService(
+                    embedding_provider=embedding_model.provider,
+                    model_index=store.model_index(spec, create=False),
+                ),
+            )
+        elif arguments.command == "search":
             _print_search_results(
                 query=arguments.query,
                 limit=arguments.limit,
@@ -106,6 +120,53 @@ def _print_search_results(query, limit, max_distance, full_text, as_json, embedd
         print(f"match {round(_similarity(match.distance) * 100)}%  file={match.document_id}")
         print(_shorten_text(match.text, full_text))
         print()
+
+
+def _print_evaluation(cases_path, limit, query_prefix, as_json, search_service) -> None:
+    """Search every evaluation case and print the rank of each case and the retrieval metrics.
+
+    Args:
+        cases_path: The JSON file with the queries and their relevant chunks.
+        limit: The number of results to read for each query.
+        query_prefix: Text to put in front of each query.
+        as_json: Print the report as JSON instead of plain text.
+        search_service: Service that searches the stored chunks.
+    """
+    cases = load_evaluation_cases(cases_path)
+    report = RetrievalEvaluator(lambda query, count: search_service.search(query=query, limit=count)).evaluate(
+        cases, limit=limit, query_prefix=query_prefix
+    )
+    if as_json:
+        print(json.dumps(asdict(report), ensure_ascii=False, indent=2))
+        return
+
+    for case in report.cases:
+        rank = f"rank {case.rank}" if case.rank else "miss  "
+        print(f"{rank}  recall {case.recall:.2f}  {case.query}")
+    print()
+    print(f"cases          {len(report.cases)}")
+    print(f"hit rate@{limit:<5} {report.hit_rate:.3f}")
+    print(f"recall@{limit:<7} {report.recall:.3f}")
+    print(f"MRR@{limit:<10} {report.mean_reciprocal_rank:.3f}")
+    print(
+        f"distance       relevant {_format_distance(report.mean_relevant_distance)}"
+        f"  other {_format_distance(report.mean_other_distance)}"
+    )
+
+
+def _format_distance(distance: float | None) -> str:
+    """Format a mean distance for the report.
+
+    Args:
+        distance: The mean distance, or None when there were no results of that kind.
+
+    Returns:
+        The distance with three decimals, or a dash.
+    """
+    if distance is None:
+        return "-"
+
+    return f"{distance:.3f}"
 
 
 def _similarity(distance: float) -> float:
@@ -229,6 +290,27 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the chunks as a JSON list, with the full text.",
     )
+
+    evaluate = commands.add_parser(
+        "eval",
+        parents=[shared],
+        help="Measure how well the search finds the relevant chunks of a test set.",
+        description="Search each query of a JSON test set and print the hit rate, recall and MRR at the limit.",
+    )
+    evaluate.add_argument("cases", type=Path, help="JSON file with the queries and their relevant chunks.")
+    evaluate.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_SEARCH_LIMIT,
+        help=f"Number of results to read for each query (the k in recall@k). Default is {DEFAULT_SEARCH_LIMIT}.",
+    )
+    evaluate.add_argument(
+        "--query-prefix",
+        default="",
+        metavar="TEXT",
+        help="Text to put in front of each query, to compare query instructions of the model.",
+    )
+    evaluate.add_argument("--json", action="store_true", help="Print the report as JSON.")
 
     return parser
 
