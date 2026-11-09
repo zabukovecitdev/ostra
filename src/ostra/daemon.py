@@ -8,11 +8,10 @@ from pathlib import Path
 from platformdirs import user_data_path
 
 from ostra.config import APP_NAME, NO_DIRECTORIES_MESSAGE, AppConfig, load_config
-from ostra.connectors.database_facade import DatabaseFacade
-from ostra.indexing import build_ingestion_service
+from ostra.indexing import run_indexing
 from ostra.models.factory import build_embedding_model
 from ostra.service_manager import install_service, uninstall_service
-from ostra.services.database_service import DatabaseService
+from ostra.store.open_chunk_store import open_chunk_store
 
 DEFAULT_INTERVAL_MINUTES = 15
 STATUS_PATH = user_data_path(APP_NAME) / "status.json"
@@ -60,7 +59,7 @@ def index_once(status_path: Path = STATUS_PATH) -> None:
         status_path: Location of the JSON status file.
     """
     started_at = datetime.now(UTC)
-    processed_files: list[Path] = []
+    processed_files: list[str] = []
     error = None
     message = None
     try:
@@ -85,24 +84,21 @@ def index_once(status_path: Path = STATUS_PATH) -> None:
     )
 
 
-def _index_directories(config: AppConfig, processed_files: list[Path]) -> None:
+def _index_directories(config: AppConfig, processed_files: list[str]) -> None:
     """Embed and store the chunks of the configured folders.
 
     Args:
         config: The application settings.
-        processed_files: List that receives the path of each processed file.
+        processed_files: List that receives the ID of each processed document.
     """
-    connector = DatabaseFacade(backend=config.database_backend, database_path=config.database_path)
-    try:
-        DatabaseService(connector=connector).initialize()
-        build_ingestion_service(
+    embedding_model = build_embedding_model(config)
+    with open_chunk_store(config.database_backend, config.database_path) as store:
+        run_indexing(
             config=config,
-            connector=connector,
-            embedding_model=build_embedding_model(config),
-            on_file_processed=processed_files.append,
-        ).process_files()
-    finally:
-        connector.close()
+            model_index=store.model_index(embedding_model.spec, create=True),
+            embedding_model=embedding_model,
+            on_document_processed=processed_files.append,
+        )
 
 
 def _write_status(status_path: Path, status: dict) -> None:

@@ -6,9 +6,10 @@ import pytest
 
 from ostra import main
 from ostra.config import NO_DIRECTORIES_MESSAGE, AppConfig
-from ostra.connectors.database_facade import DatabaseBackend
 from ostra.embeddings.base import EmbeddingProvider
-from ostra.models.base import EmbeddingModel
+from ostra.models.embedding_model import EmbeddingModel
+from ostra.models.registry import MXBAI_EMBED_LARGE
+from ostra.store.database_backend import DatabaseBackend
 from ostra.tokenization.base import Tokenizer
 
 
@@ -23,27 +24,22 @@ class FakeTokenizer(Tokenizer):
 class FakeEmbeddingProvider(EmbeddingProvider):
     """Return the same 1024-value vector for every text."""
 
-    def get_embedding(self, text: str) -> list[float]:
+    def _embed(self, text: str) -> list[float]:
         """Return a fixed vector."""
         return [0.5] * 1024
 
 
-class FakeEmbeddingModel(EmbeddingModel):
+def make_fake_model() -> EmbeddingModel:
     """Stand in for the Ollama model so that the tests do not call a server or download a tokenizer."""
-
-    def get_embedding_provider(self) -> EmbeddingProvider:
-        """Return the fake provider."""
-        return FakeEmbeddingProvider()
-
-    def get_tokenizer(self) -> Tokenizer:
-        """Return the fake tokenizer."""
-        return FakeTokenizer()
+    return EmbeddingModel(
+        spec=MXBAI_EMBED_LARGE, provider=FakeEmbeddingProvider(MXBAI_EMBED_LARGE), tokenizer=FakeTokenizer()
+    )
 
 
 @pytest.fixture(autouse=True)
 def fake_embedding_model(monkeypatch: pytest.MonkeyPatch):
     """Replace the embedding model that main creates with the fake model for every test."""
-    monkeypatch.setattr(main, "build_embedding_model", lambda config: FakeEmbeddingModel())
+    monkeypatch.setattr(main, "build_embedding_model", lambda config, model_id=None: make_fake_model())
 
 
 def test_main__database_ready__prints_backend_name(
@@ -70,10 +66,10 @@ def test_main__started__configures_info_logging(monkeypatch: pytest.MonkeyPatch,
     assert basic_config_calls == [{"level": logging.INFO}]
 
 
-def test_main__directories_have_files__prints_each_line(
+def test_main__directories_have_files__prints_no_chunk_text(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ):
-    """Print each line of the files in the configured directories without the line ending."""
+    """Print no text of the indexed files, because the progress bar shows the progress instead."""
     notes = tmp_path / "notes"
     notes.mkdir()
     (notes / "a.txt").write_text("alpha\nbeta\n")
@@ -83,43 +79,7 @@ def test_main__directories_have_files__prints_each_line(
 
     main.main(["index"])
 
-    assert capsys.readouterr().out.splitlines()[1:] == ["alpha beta"]
-
-
-def test_main__reindex_flag__prints_lines_of_unchanged_file_again(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-):
-    """Print the lines of an unchanged file again when the reindex flag is given."""
-    notes = tmp_path / "notes"
-    notes.mkdir()
-    (notes / "a.txt").write_text("alpha\n")
-    monkeypatch.setattr(
-        main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
-    )
-    main.main(["index"])
-    capsys.readouterr()
-
-    main.main(["index", "--reindex"])
-
-    assert capsys.readouterr().out.splitlines()[1:] == ["alpha"]
-
-
-def test_main__no_reindex_flag__skips_lines_of_unchanged_file(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-):
-    """Print no lines of an unchanged file when the reindex flag is not given."""
-    notes = tmp_path / "notes"
-    notes.mkdir()
-    (notes / "a.txt").write_text("alpha\n")
-    monkeypatch.setattr(
-        main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
-    )
-    main.main(["index"])
-    capsys.readouterr()
-
-    main.main(["index"])
-
-    assert capsys.readouterr().out.splitlines()[1:] == []
+    assert "alpha beta" not in capsys.readouterr().out
 
 
 def test_main__search_flag__prints_stored_chunk_with_its_file(
@@ -190,26 +150,22 @@ def test_main__database_flag_unknown__exits_with_error(monkeypatch: pytest.Monke
 
 
 def test_main__directory_flag__processes_given_folder_instead_of_config(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    """Process the folder from the directory flag and skip the configured folders."""
+    """Index the folder from the directory flag and skip the configured folders."""
     configured = tmp_path / "configured"
-    configured.mkdir()
-    (configured / "a.txt").write_text("configured text\n")
     given = tmp_path / "given"
-    given.mkdir()
-    (given / "b.txt").write_text("given text\n")
+    indexed_directories = []
     monkeypatch.setattr(
         main,
         "load_config",
         lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[configured]),
     )
+    monkeypatch.setattr(main, "run_indexing", lambda **kwargs: indexed_directories.append(kwargs["directories"]))
 
     main.main(["index", "--directory", str(given)])
 
-    output = capsys.readouterr().out
-    assert "given text" in output
-    assert "configured text" not in output
+    assert indexed_directories == [[given]]
 
 
 def test_main__directory_flag_repeated__processes_every_folder(tmp_path: Path):
@@ -361,3 +317,19 @@ def test_main__index_without_directories__prints_hint(
     main.main(["index"])
 
     assert NO_DIRECTORIES_MESSAGE in capsys.readouterr().out
+
+
+def test_main__positional_folders__are_combined_with_directory_flag():
+    """Keep the positional folders first, then the folders from the directory flag."""
+    arguments = main._build_parser().parse_args(["index", "/data/one", "~/two", "--directory", "/data/three"])
+
+    assert arguments.folders == [Path("/data/one"), Path("~/two")]
+    assert arguments.directory == [Path("/data/three")]
+
+
+def test_main__positional_folder_with_recursive__parses_both():
+    """Accept the recursive flag after a positional folder."""
+    arguments = main._build_parser().parse_args(["index", "/data/notes", "--recursive"])
+
+    assert arguments.folders == [Path("/data/notes")]
+    assert arguments.recursive is True

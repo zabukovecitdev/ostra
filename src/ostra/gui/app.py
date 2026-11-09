@@ -1,18 +1,18 @@
 import json
-from dataclasses import replace
 from pathlib import Path
 
 from nicegui import run, ui
 
 from ostra.config import default_config_path, load_config, save_config
-from ostra.connectors.database_facade import DatabaseBackend
 from ostra.daemon import STATUS_PATH
 from ostra.gui.folder_picker import FolderPicker
-from ostra.gui.ollama_status import INSTALL_URL, MODEL_URL, OllamaState, check_ollama, is_valid_server_url
+from ostra.gui.ollama_status import INSTALL_URL, OllamaState, check_ollama, is_valid_server_url, model_url
 from ostra.gui.search import search_chunks
 from ostra.gui.theme import BUTTON_PROPS, FIELD_PROPS, apply_theme
 from ostra.models.factory import ollama_settings
 from ostra.models.provider import EmbeddingProviderName
+from ostra.models.registry import EMBEDDING_MODELS, get_model_spec
+from ostra.store.database_backend import DatabaseBackend
 
 DEFAULT_PORT = 8765
 RESULT_LIMIT = 10
@@ -79,7 +79,7 @@ def search_page() -> None:
                 with ui.card().classes("w-full").props(FIELD_PROPS).props("flat"):
                     with ui.row().classes("items-center gap-3"):
                         ui.label(f"{round((1 - match.distance) * 100)}%").classes("ostra-score")
-                        ui.label(match.file_path).classes("ostra-muted")
+                        ui.label(match.document_id).classes("ostra-muted")
                     ui.label(match.text).classes("ostra-text")
 
     with ui.column().classes("ostra-page"):
@@ -114,7 +114,7 @@ def welcome_page() -> None:
 
         config = load_config()
         if chosen not in config.directories:
-            save_config(replace(config, directories=[*config.directories, chosen]))
+            save_config(config.model_copy(update={"directories": [*config.directories, chosen]}))
         ui.navigate.to("/config")
 
     async def save_url_and_check(address: str) -> None:
@@ -128,7 +128,7 @@ def welcome_page() -> None:
             ui.notify("Enter an address such as http://192.168.1.20:11434", type="negative")
             return
 
-        save_config(replace(load_config(), ollama_base_url=url))
+        save_config(load_config().model_copy(update={"ollama_base_url": url}))
         await show_model_status()
 
     async def show_model_status() -> None:
@@ -139,7 +139,8 @@ def welcome_page() -> None:
         with status_box:
             ui.label("Checking Ollama...").classes("ostra-muted")
 
-        status = await run.io_bound(check_ollama, settings)
+        ollama_model = get_model_spec(config.embedding_model).ollama_model
+        status = await run.io_bound(check_ollama, settings, ollama_model)
         if status is None:
             return
 
@@ -153,7 +154,7 @@ def welcome_page() -> None:
             if status.state == OllamaState.MODEL_MISSING:
                 _status_line(f"Model not installed: {status.model}", ok=False)
                 ui.label(f"Run on the server: ollama pull {status.model}").classes("ostra-muted")
-                ui.link("Model instructions", MODEL_URL, new_tab=True).classes("ostra-link")
+                ui.link("Model instructions", model_url(ollama_model), new_tab=True).classes("ostra-link")
             else:
                 _status_line(f"Ollama is not reachable at {settings.base_url}", ok=False)
                 ui.link("Install or start Ollama", INSTALL_URL, new_tab=True).classes("ostra-link")
@@ -249,20 +250,25 @@ def config_page() -> None:
             ui.notify("The Ollama address must start with http:// or https://", type="negative")
             return
 
-        if overlap_input.value >= chunk_size_input.value:
+        chunk_size = int(chunk_size_input.value)
+        if overlap_input.value >= chunk_size:
             ui.notify("Overlap must be smaller than the chunk size.", type="negative")
             return
 
         save_config(
-            replace(
-                config,
-                database_path=Path(database_path_input.value).expanduser(),
-                directories=directories,
-                database_backend=DatabaseBackend(backend_input.value),
-                chunk_size_tokens=int(chunk_size_input.value),
-                chunk_overlap_tokens=int(overlap_input.value),
-                embedding_provider=EmbeddingProviderName(provider_input.value),
-                ollama_base_url=url_input.value.strip() or None,
+            config.model_copy(
+                update={
+                    "database_path": Path(database_path_input.value).expanduser(),
+                    "directories": directories,
+                    "database_backend": DatabaseBackend(backend_input.value),
+                    "embedding_model": model_input.value,
+                    "chunk_size_tokens": None
+                    if chunk_size == get_model_spec(model_input.value).default_chunk_size_tokens
+                    else chunk_size,
+                    "chunk_overlap_tokens": int(overlap_input.value),
+                    "embedding_provider": EmbeddingProviderName(provider_input.value),
+                    "ollama_base_url": url_input.value.strip() or None,
+                }
             )
         )
         ui.notify("Saved. The background indexer uses the new settings on its next run.", type="positive")
@@ -282,6 +288,7 @@ def config_page() -> None:
             value=config.embedding_provider.value,
             label="Provider",
         ).props(FIELD_PROPS)
+        model_input = ui.select(list(EMBEDDING_MODELS), value=config.embedding_model, label="Model").props(FIELD_PROPS)
         url_input = (
             ui.input("Ollama server address", value=config.ollama_base_url or ollama_settings(config).base_url)
             .classes("w-full")
@@ -294,9 +301,12 @@ def config_page() -> None:
         backend_input = ui.select(
             [backend.value for backend in DatabaseBackend], value=config.database_backend.value, label="Backend"
         ).props(FIELD_PROPS)
-        chunk_size_input = ui.number("Chunk size (tokens)", value=config.chunk_size_tokens, min=1, precision=0).props(
-            FIELD_PROPS
-        )
+        chunk_size_input = ui.number(
+            "Chunk size (tokens)",
+            value=config.chunk_size_tokens or get_model_spec(config.embedding_model).default_chunk_size_tokens,
+            min=1,
+            precision=0,
+        ).props(FIELD_PROPS)
         overlap_input = ui.number(
             "Chunk overlap (tokens)", value=config.chunk_overlap_tokens, min=0, precision=0
         ).props(FIELD_PROPS)

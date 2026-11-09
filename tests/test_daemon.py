@@ -5,6 +5,9 @@ import pytest
 
 from ostra import daemon, service_manager
 from ostra.config import NO_DIRECTORIES_MESSAGE, AppConfig
+from ostra.embeddings.base import EmbeddingProvider
+from ostra.models.embedding_model import EmbeddingModel
+from ostra.models.registry import MXBAI_EMBED_LARGE
 
 
 def test_index_once__config_fails__writes_error_to_status_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -29,7 +32,7 @@ def test_index_once__empty_directory__writes_status_without_error(tmp_path: Path
     notes.mkdir()
     config = AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
     monkeypatch.setattr(daemon, "load_config", lambda: config)
-    monkeypatch.setattr(daemon, "build_embedding_model", lambda config: _FakeModel())
+    monkeypatch.setattr(daemon, "build_embedding_model", lambda config, model_id=None: _fake_model())
     status_path = tmp_path / "status.json"
 
     daemon.index_once(status_path=status_path)
@@ -54,12 +57,9 @@ def test_uninstall_service__unit_missing__reports_not_installed(tmp_path: Path, 
     assert service_manager.uninstall_service() == "Service is not installed."
 
 
-class _FakeModel:
-    def get_tokenizer(self):
-        return _FakeTokenizer()
-
-    def get_embedding_provider(self):
-        return None
+class _FakeProvider(EmbeddingProvider):
+    def _embed(self, text: str) -> list[float]:
+        return [0.0] * 1024
 
 
 class _FakeTokenizer:
@@ -78,3 +78,7 @@ def test_index_once__no_directories__writes_message_and_no_error(tmp_path: Path,
     status = json.loads(status_path.read_text())
     assert status["error"] is None
     assert status["message"] == NO_DIRECTORIES_MESSAGE
+
+
+def _fake_model() -> EmbeddingModel:
+    return EmbeddingModel(spec=MXBAI_EMBED_LARGE, provider=_FakeProvider(MXBAI_EMBED_LARGE), tokenizer=_FakeTokenizer())

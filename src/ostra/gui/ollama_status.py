@@ -8,7 +8,7 @@ from ostra.embeddings.ollama_embedding_provider import OllamaSettings
 
 CHECK_TIMEOUT_SECONDS = 3
 INSTALL_URL = "https://ollama.com/download"
-MODEL_URL = "https://ollama.com/library/mxbai-embed-large"
+MODEL_LIBRARY_URL = "https://ollama.com/library/"
 
 
 class OllamaState(Enum):
@@ -27,16 +27,17 @@ class OllamaStatus:
     model: str
 
 
-def check_ollama(settings: OllamaSettings) -> OllamaStatus:
+def check_ollama(settings: OllamaSettings, ollama_model: str) -> OllamaStatus:
     """Check that the Ollama server runs and has the embedding model.
 
     Args:
-        settings: The Ollama server address and the model name.
+        settings: The Ollama server address.
+        ollama_model: The name of the model that must be installed on the server.
 
     Returns:
         The state: ready, model missing, or server unavailable. The check stops after a few seconds.
     """
-    model = settings.model if ":" in settings.model else f"{settings.model}:latest"
+    model = ollama_model if ":" in ollama_model else f"{ollama_model}:latest"
     try:
         installed = Client(host=settings.base_url, timeout=CHECK_TIMEOUT_SECONDS).list().models
     except Exception:
@@ -59,3 +60,15 @@ def is_valid_server_url(url: str) -> bool:
     """
     parsed = urlparse(url.strip())
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def model_url(ollama_model: str) -> str:
+    """Return the page of a model in the Ollama library.
+
+    Args:
+        ollama_model: The name of the model, with or without a tag.
+
+    Returns:
+        The address of the model page.
+    """
+    return MODEL_LIBRARY_URL + ollama_model.split(":")[0]

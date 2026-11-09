@@ -24,6 +24,7 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "sqlite-vec>=0.1.9",
     "tokenizers>=0.23.3",
+    "tqdm>=4.70.1",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +52,7 @@ dev = [
     "pre-commit>=4.7.0",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
+    "types-tqdm>=4.70.0.20261106",
 ]
 
 [tool.ruff]

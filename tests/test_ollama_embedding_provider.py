@@ -4,9 +4,13 @@ from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
+from conftest import make_spec
 
 from ostra.embeddings.base import EmbeddingProvider
 from ostra.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider, OllamaSettings
+from ostra.embeddings.vector import Vector
+
+SPEC = make_spec("test-model", 3, query_prefix="query: ", document_prefix="doc: ")
 
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):
@@ -41,10 +45,10 @@ def fake_server() -> Iterator[HTTPServer]:
     server.server_close()
 
 
-def base_url(server: HTTPServer) -> str:
-    """Return the base URL of the fake server."""
+def make_provider(server: HTTPServer) -> OllamaEmbeddingProvider:
+    """Build a provider for the fake server."""
     host, port = server.server_address
-    return f"http://{host}:{port}"
+    return OllamaEmbeddingProvider(SPEC, OllamaSettings(base_url=f"http://{host}:{port}"))
 
 
 def test_ollama_embedding_provider__is_an_embedding_provider():
@@ -52,52 +56,58 @@ def test_ollama_embedding_provider__is_an_embedding_provider():
     assert issubclass(OllamaEmbeddingProvider, EmbeddingProvider)
 
 
-def test_get_embedding__server_returns_vector__returns_first_embedding(fake_server: HTTPServer):
-    """Return the embedding vector from the server response."""
+def test_embed_document__server_returns_vector__returns_vector_with_model_id(fake_server: HTTPServer):
+    """Return the embedding from the server response, stamped with the model ID."""
     FakeOllamaHandler.response_body = {"embeddings": [[0.1, 0.2, 0.3]]}
-    provider = OllamaEmbeddingProvider(OllamaSettings(base_url=base_url(fake_server), model="test-model"))
 
-    embedding = provider.get_embedding("hello")
+    vector = make_provider(fake_server).embed_document("hello")
 
-    assert embedding == [0.1, 0.2, 0.3]
-
-
-def test_get_embedding__text_sent__posts_model_and_input(fake_server: HTTPServer):
-    """Send the configured model and the text to the embed endpoint."""
-    FakeOllamaHandler.response_body = {"embeddings": [[0.1]]}
-    provider = OllamaEmbeddingProvider(OllamaSettings(base_url=base_url(fake_server), model="test-model"))
-
-    provider.get_embedding("hello")
-
-    assert FakeOllamaHandler.last_request == {"model": "test-model", "input": "hello"}
+    assert vector == Vector(model_id="test-model", values=(0.1, 0.2, 0.3))
 
 
-def test_get_embedding__no_embedding_in_response__raises_value_error(fake_server: HTTPServer):
+def test_embed_document__text_sent__posts_model_prefixed_input_and_no_truncation(fake_server: HTTPServer):
+    """Send the Ollama model name, the text with the document prefix, and the order not to cut the text."""
+    FakeOllamaHandler.response_body = {"embeddings": [[0.1, 0.2, 0.3]]}
+
+    make_provider(fake_server).embed_document("hello")
+
+    assert FakeOllamaHandler.last_request == {"model": "test-model:latest", "input": "doc: hello", "truncate": False}
+
+
+def test_embed_query__text_sent__posts_input_with_query_prefix(fake_server: HTTPServer):
+    """Put the query prefix, and not the document prefix, in front of a query."""
+    FakeOllamaHandler.response_body = {"embeddings": [[0.1, 0.2, 0.3]]}
+
+    make_provider(fake_server).embed_query("hello")
+
+    assert FakeOllamaHandler.last_request["input"] == "query: hello"
+
+
+def test_embed_document__no_embedding_in_response__raises_value_error(fake_server: HTTPServer):
     """Raise ValueError when the server response contains no embedding."""
     FakeOllamaHandler.response_body = {"embeddings": []}
-    provider = OllamaEmbeddingProvider(OllamaSettings(base_url=base_url(fake_server), model="test-model"))
 
     with pytest.raises(ValueError, match="contains no embedding"):
-        provider.get_embedding("hello")
+        make_provider(fake_server).embed_document("hello")
 
 
-def test_ollama_settings__defaults__point_to_local_server_and_model(monkeypatch: pytest.MonkeyPatch):
-    """Use the local Ollama server and the mxbai-embed-large model by default."""
+def test_embed_document__vector_has_wrong_size__raises_value_error(fake_server: HTTPServer):
+    """Raise ValueError when the model returns another number of values than its spec says."""
+    FakeOllamaHandler.response_body = {"embeddings": [[0.1, 0.2]]}
+
+    with pytest.raises(ValueError, match="wrong size.*Expected=3 Actual=2"):
+        make_provider(fake_server).embed_document("hello")
+
+
+def test_ollama_settings__defaults__point_to_local_server(monkeypatch: pytest.MonkeyPatch):
+    """Use the local Ollama server by default."""
     monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
-    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
 
-    settings = OllamaSettings()
-
-    assert settings.base_url == "http://localhost:11434"
-    assert settings.model == "mxbai-embed-large:latest"
+    assert OllamaSettings().base_url == "http://localhost:11434"
 
 
-def test_ollama_settings__environment_set__overrides_defaults(monkeypatch: pytest.MonkeyPatch):
-    """Read the server address and the model from OLLAMA_ environment variables."""
+def test_ollama_settings__environment_set__overrides_server_address(monkeypatch: pytest.MonkeyPatch):
+    """Read the server address from the OLLAMA_BASE_URL environment variable."""
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://10.0.0.5:11434")
-    monkeypatch.setenv("OLLAMA_MODEL", "nomic-embed-text")
 
-    settings = OllamaSettings()
-
-    assert settings.base_url == "http://10.0.0.5:11434"
-    assert settings.model == "nomic-embed-text"
+    assert OllamaSettings().base_url == "http://10.0.0.5:11434"

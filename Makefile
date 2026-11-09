@@ -2,19 +2,30 @@ LIMIT ?= 5
 # Optional folder to process instead of the configured folders, e.g. make run DIRECTORY=~/Documents/wikipedia
 DIRECTORY ?=
 DIRECTORY_FLAG = $(if $(DIRECTORY),--directory $(DIRECTORY))
+# Set RECURSIVE=1 to index the files in subfolders too, e.g. make run DIRECTORY=~/notes RECURSIVE=1
+RECURSIVE ?=
+RECURSIVE_FLAG = $(if $(RECURSIVE),--recursive)
+# Optional parts to install with make install. The gui extra is needed by ostra-app.
+EXTRAS ?= gui
 
 .DEFAULT_GOAL := help
 
-.PHONY: help run reindex search test lint format typecheck check hooks
+.PHONY: help install uninstall run reindex search test lint format typecheck check hooks
 
 help: ## Show the available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
 
-run: ## Index the configured files, or DIRECTORY when set
-	uv run ostra index $(DIRECTORY_FLAG)
+install: ## Install the ostra commands for your user with EXTRAS (default gui), e.g. make install EXTRAS=gui,chroma
+	uv tool install --editable --reinstall '.$(if $(EXTRAS),[$(EXTRAS)])'
+
+uninstall: ## Remove the installed ostra commands
+	uv tool uninstall ostra
+
+run: ## Index the configured files, or DIRECTORY when set. RECURSIVE=1 scans subfolders
+	uv run ostra index $(DIRECTORY_FLAG) $(RECURSIVE_FLAG)
 
 reindex: ## Embed every chunk again, or DIRECTORY when set
-	uv run ostra index --reindex $(DIRECTORY_FLAG)
+	uv run ostra index --reindex $(DIRECTORY_FLAG) $(RECURSIVE_FLAG)
 
 search: ## Print the stored chunks closest to QUERY, e.g. make search QUERY="solar system" LIMIT=3
 	@test -n "$(QUERY)" || { echo 'Set QUERY, e.g. make search QUERY="solar system"'; exit 1; }

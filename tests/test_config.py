@@ -7,7 +7,6 @@ from platformdirs import user_data_path
 
 from ostra.config import (
     DEFAULT_CHUNK_OVERLAP_TOKENS,
-    DEFAULT_CHUNK_SIZE_TOKENS,
     DEFAULT_CONFIG_PATH,
     DEFAULT_DATABASE_PATH,
     AppConfig,
@@ -15,7 +14,7 @@ from ostra.config import (
     load_config,
     save_config,
 )
-from ostra.connectors.database_facade import DatabaseBackend
+from ostra.store.database_backend import DatabaseBackend
 
 
 def test_load_config__config_file_missing__returns_default_settings(tmp_path: Path):
@@ -36,9 +35,9 @@ def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp
         "database_path": str(DEFAULT_DATABASE_PATH),
         "directories": [],
         "database_backend": "sqlite",
-        "chunk_size_tokens": 510,
         "chunk_overlap_tokens": 50,
         "embedding_provider": "ollama",
+        "embedding_model": "mxbai-embed-large",
     }
 
 
@@ -118,7 +117,7 @@ def test_load_config__directories_not_a_list__raises_value_error(tmp_path: Path)
     config_path = tmp_path / "config.json"
     config_path.write_text('{"directories": "/data/notes"}')
 
-    with pytest.raises(ValueError, match="must be a list"):
+    with pytest.raises(ValueError, match=r"directories\n.*valid list"):
         load_config(config_path)
 
 
@@ -155,14 +154,14 @@ def test_default_config_path__legacy_file_missing__returns_user_config_path(
     assert default_config_path() == DEFAULT_CONFIG_PATH
 
 
-def test_load_config__chunk_settings_missing__returns_default_chunk_size_and_overlap(tmp_path: Path):
-    """Return a chunk size of 510 tokens and an overlap of 50 tokens when the config file has no chunk keys."""
+def test_load_config__chunk_settings_missing__returns_no_chunk_size_and_default_overlap(tmp_path: Path):
+    """Return no chunk size, so that the model default applies, and an overlap of 50 tokens."""
     config_path = tmp_path / "config.json"
     config_path.write_text("{}")
 
     config = load_config(config_path)
 
-    assert config.chunk_size_tokens == DEFAULT_CHUNK_SIZE_TOKENS == 510
+    assert config.chunk_size_tokens is None
     assert config.chunk_overlap_tokens == DEFAULT_CHUNK_OVERLAP_TOKENS == 50
 
 
@@ -177,13 +176,13 @@ def test_load_config__chunk_settings_set__returns_configured_values(tmp_path: Pa
     assert config.chunk_overlap_tokens == 100
 
 
-@pytest.mark.parametrize("value", ['"800"', "1.5", "true"])
+@pytest.mark.parametrize("value", ['"many"', "1.5", "true"])
 def test_load_config__chunk_size_not_an_integer__raises_value_error(tmp_path: Path, value: str):
     """Raise ValueError when the chunk size is not an integer."""
     config_path = tmp_path / "config.json"
     config_path.write_text(f'{{"chunk_size_tokens": {value}}}')
 
-    with pytest.raises(ValueError, match="chunk_size_tokens must be an integer"):
+    with pytest.raises(ValueError, match=r"chunk_size_tokens\n"):
         load_config(config_path)
 
 
@@ -208,7 +207,7 @@ def test_load_config__backend_not_supported__raises_value_error(tmp_path: Path):
     config_path = tmp_path / "config.json"
     config_path.write_text('{"database_backend": "postgres"}')
 
-    with pytest.raises(ValueError, match="database_backend must be one of sqlite, chroma"):
+    with pytest.raises(ValueError, match=r"database_backend\n.*'sqlite' or 'chroma'"):
         load_config(config_path)
 
 
@@ -249,4 +248,93 @@ def test_load_config__unknown_provider__raises_value_error(tmp_path: Path):
     config_path.write_text(json.dumps({"embedding_provider": "magic"}))
 
     with pytest.raises(ValueError, match="embedding_provider"):
+        load_config(config_path)
+
+
+def test_load_config__embedding_model_missing__returns_default_model(tmp_path: Path):
+    """Keep an old config file working: it has no embedding_model key and gets mxbai-embed-large."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}")
+
+    assert load_config(config_path).embedding_model == "mxbai-embed-large"
+
+
+def test_load_config__embedding_model_unknown__raises_value_error_that_lists_supported_models(tmp_path: Path):
+    """Reject a model that is not in the registry."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"embedding_model": "magic"}))
+
+    with pytest.raises(ValueError, match=r"embedding_model\n.*must be one of mxbai-embed-large"):
+        load_config(config_path)
+
+
+def test_save_config__chunk_size_not_set__leaves_the_key_out(tmp_path: Path):
+    """Write no chunk size when the model default applies, so that a model change takes its own default."""
+    config_path = tmp_path / "config.json"
+
+    save_config(AppConfig(database_path=tmp_path / "db"), config_path)
+
+    assert "chunk_size_tokens" not in json.loads(config_path.read_text())
+
+
+def test_load_config__old_file_with_chunk_size_510__keeps_the_value(tmp_path: Path):
+    """Keep a chunk size that an earlier version wrote into the config file."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"chunk_size_tokens": 510}')
+
+    assert load_config(config_path).chunk_size_tokens == 510
+
+
+def test_load_config__environment_variable_set__overrides_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Let an OSTRA_ environment variable override the key of the same name in the config file."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"database_backend": "sqlite", "chunk_overlap_tokens": 20}')
+    monkeypatch.setenv("OSTRA_DATABASE_BACKEND", "chroma")
+    monkeypatch.setenv("OSTRA_CHUNK_SIZE_TOKENS", "800")
+
+    config = load_config(config_path)
+
+    assert config.database_backend is DatabaseBackend.CHROMA
+    assert config.chunk_size_tokens == 800
+    assert config.chunk_overlap_tokens == 20
+
+
+def test_load_config__directories_environment_variable__reads_json_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Read OSTRA_DIRECTORIES as a JSON list and expand a leading tilde."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}")
+    monkeypatch.setenv("OSTRA_DIRECTORIES", '["~/notes", "/data"]')
+
+    assert load_config(config_path).directories == [Path.home() / "notes", Path("/data")]
+
+
+def test_load_config__config_file_missing_and_environment_set__writes_only_defaults_to_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Keep environment overrides out of the new config file, but apply them to the returned settings."""
+    config_path = tmp_path / "config.json"
+    monkeypatch.setenv("OSTRA_DATABASE_BACKEND", "chroma")
+
+    config = load_config(config_path)
+
+    assert config.database_backend is DatabaseBackend.CHROMA
+    assert json.loads(config_path.read_text())["database_backend"] == "sqlite"
+
+
+def test_load_config__unknown_key__is_ignored(tmp_path: Path):
+    """Ignore keys that the settings do not know, so that an older or newer config file still loads."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"removed_setting": 1}')
+
+    assert load_config(config_path).database_backend is DatabaseBackend.SQLITE
+
+
+def test_load_config__file_is_not_an_object__raises_value_error(tmp_path: Path):
+    """Raise ValueError when the config file holds JSON that is not an object."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("[]")
+
+    with pytest.raises(ValueError, match="must contain a JSON object"):
         load_config(config_path)

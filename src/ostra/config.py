@@ -1,23 +1,23 @@
 import json
 import logging
 import os
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from platformdirs import user_config_path, user_data_path
+from pydantic import Field, ValidationError, field_validator
+from pydantic_settings import BaseSettings, EnvSettingsSource, SettingsConfigDict
 
-from ostra.connectors.database_facade import DatabaseBackend
 from ostra.models.provider import EmbeddingProviderName
+from ostra.models.registry import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS
+from ostra.store.database_backend import DatabaseBackend
 
 APP_NAME = "ostra"
 # Earlier versions kept the config file here. An existing file at this path stays in use.
 LEGACY_CONFIG_PATH = Path.home() / "ostra" / "config.json"
 DEFAULT_CONFIG_PATH = user_config_path(APP_NAME) / "config.json"
 DEFAULT_DATABASE_PATH = user_data_path(APP_NAME) / "ostra.db"
-# The model accepts 512 tokens. Two of them are the special tokens [CLS] and [SEP].
 DEFAULT_DATABASE_BACKEND = DatabaseBackend.SQLITE
 DEFAULT_EMBEDDING_PROVIDER = EmbeddingProviderName.OLLAMA
-DEFAULT_CHUNK_SIZE_TOKENS = 510
 DEFAULT_CHUNK_OVERLAP_TOKENS = 50
 OWNER_ONLY_DIRECTORY_MODE = 0o700
 OWNER_ONLY_FILE_MODE = 0o600
@@ -40,25 +40,64 @@ def default_config_path() -> Path:
     return DEFAULT_CONFIG_PATH
 
 
-@dataclass(frozen=True)
-class AppConfig:
-    """Hold the application settings read from the config file."""
+class AppConfig(BaseSettings):
+    """Hold the application settings.
 
-    database_path: Path
-    directories: list[Path] = field(default_factory=list)
+    Each setting comes from the first of these that sets it: a keyword argument, an environment variable with
+    the OSTRA_ prefix, the config file, the default value. For example OSTRA_DATABASE_BACKEND=chroma selects
+    Chroma for one run. A list setting such as OSTRA_DIRECTORIES takes a JSON list. Paths accept a leading ~
+    for the home directory.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="OSTRA_", frozen=True, extra="ignore")
+
+    database_path: Path = DEFAULT_DATABASE_PATH
+    directories: list[Path] = Field(default_factory=list)
     database_backend: DatabaseBackend = DEFAULT_DATABASE_BACKEND
-    chunk_size_tokens: int = DEFAULT_CHUNK_SIZE_TOKENS
+    # None means the default chunk size of the embedding model.
+    chunk_size_tokens: int | None = None
     chunk_overlap_tokens: int = DEFAULT_CHUNK_OVERLAP_TOKENS
     embedding_provider: EmbeddingProviderName = DEFAULT_EMBEDDING_PROVIDER
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
     # None means the OLLAMA_BASE_URL environment variable or the local default applies.
     ollama_base_url: str | None = None
 
+    @field_validator("database_path")
+    @classmethod
+    def _expand_database_path(cls, database_path: Path) -> Path:
+        """Expand a leading ~ in the database path to the home directory."""
+        return database_path.expanduser()
+
+    @field_validator("directories")
+    @classmethod
+    def _expand_directories(cls, directories: list[Path]) -> list[Path]:
+        """Expand a leading ~ in each folder to the home directory."""
+        return [directory.expanduser() for directory in directories]
+
+    @field_validator("chunk_size_tokens", "chunk_overlap_tokens", mode="before")
+    @classmethod
+    def _reject_bool(cls, value: object) -> object:
+        """Reject true and false, which would otherwise count as the integers 1 and 0."""
+        if isinstance(value, bool):
+            raise ValueError("must be an integer, not a boolean")
+
+        return value
+
+    @field_validator("embedding_model")
+    @classmethod
+    def _check_embedding_model(cls, embedding_model: str) -> str:
+        """Accept only a model that the model registry knows."""
+        if embedding_model not in EMBEDDING_MODELS:
+            raise ValueError(f"must be one of {', '.join(EMBEDDING_MODELS)}")
+
+        return embedding_model
+
 
 def load_config(config_path: Path | None = None) -> AppConfig:
-    """Read the application settings from the JSON config file.
+    """Read the application settings from the JSON config file and the OSTRA_ environment variables.
 
-    Create the config file with the default settings when it does not exist.
-    Each missing key uses its default value. Paths accept a leading ~ for the home directory.
+    Create the config file with the default settings when it does not exist. Each missing key uses its default
+    value. An environment variable overrides the key of the same name in the file.
 
     Args:
         config_path: Location of the JSON config file. Defaults to the path from default_config_path.
@@ -67,7 +106,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         The application settings.
 
     Raises:
-        ValueError: When the config file does not contain valid JSON or when directories is not a list.
+        ValueError: When the config file does not contain a valid JSON object or when a setting is not valid.
     """
     if config_path is None:
         config_path = default_config_path()
@@ -75,102 +114,21 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     if not config_path.exists():
         logger.info("Config file not found. Creating it. Path=%s", config_path)
         _write_default_config(config_path)
-        return AppConfig(
-            database_path=DEFAULT_DATABASE_PATH,
-            database_backend=DEFAULT_DATABASE_BACKEND,
-        )
 
     try:
-        raw_config = json.loads(config_path.read_text())
+        file_values = json.loads(config_path.read_text())
     except json.JSONDecodeError as error:
         raise ValueError(f"Config file is not valid JSON. Path={config_path}") from error
 
-    database_path = Path(raw_config.get("database_path", str(DEFAULT_DATABASE_PATH))).expanduser()
-    raw_directories = raw_config.get("directories", [])
-    if not isinstance(raw_directories, list):
-        raise ValueError(f"Config key directories must be a list. Path={config_path}")
+    if not isinstance(file_values, dict):
+        raise ValueError(f"Config file must contain a JSON object. Path={config_path}")
 
-    directories = [Path(raw_directory).expanduser() for raw_directory in raw_directories]
-    chunk_size_tokens = _read_int(raw_config, "chunk_size_tokens", DEFAULT_CHUNK_SIZE_TOKENS, config_path)
-    chunk_overlap_tokens = _read_int(raw_config, "chunk_overlap_tokens", DEFAULT_CHUNK_OVERLAP_TOKENS, config_path)
-    database_backend = _read_database_backend(raw_config.get("database_backend", DEFAULT_DATABASE_BACKEND.value))
-    ollama_base_url = raw_config.get("ollama_base_url")
-    if ollama_base_url is not None and not isinstance(ollama_base_url, str):
-        raise ValueError(f"Config key ollama_base_url must be a string. Path={config_path}")
-
-    return AppConfig(
-        database_path=database_path,
-        directories=directories,
-        database_backend=database_backend,
-        chunk_size_tokens=chunk_size_tokens,
-        chunk_overlap_tokens=chunk_overlap_tokens,
-        embedding_provider=_read_embedding_provider(
-            raw_config.get("embedding_provider", DEFAULT_EMBEDDING_PROVIDER.value)
-        ),
-        ollama_base_url=ollama_base_url,
-    )
-
-
-def _read_database_backend(raw_backend: str) -> DatabaseBackend:
-    """Convert the database_backend config value to a backend.
-
-    Args:
-        raw_backend: The value of the database_backend key.
-
-    Returns:
-        The database backend with that name.
-
-    Raises:
-        ValueError: When the value does not name a supported backend.
-    """
+    # Keyword arguments outrank environment variables, so merge the environment over the file values here.
+    environment_values = EnvSettingsSource(AppConfig)()
     try:
-        return DatabaseBackend(raw_backend)
-    except ValueError as error:
-        supported = ", ".join(backend.value for backend in DatabaseBackend)
-        raise ValueError(f"Config key database_backend must be one of {supported}. Backend={raw_backend}") from error
-
-
-def _read_embedding_provider(raw_provider: str) -> EmbeddingProviderName:
-    """Convert the embedding_provider config value to a provider name.
-
-    Args:
-        raw_provider: The value of the embedding_provider key.
-
-    Returns:
-        The embedding provider with that name.
-
-    Raises:
-        ValueError: When the value does not name a supported provider.
-    """
-    try:
-        return EmbeddingProviderName(raw_provider)
-    except ValueError as error:
-        supported = ", ".join(provider.value for provider in EmbeddingProviderName)
-        raise ValueError(
-            f"Config key embedding_provider must be one of {supported}. Provider={raw_provider}"
-        ) from error
-
-
-def _read_int(raw_config: dict, key: str, default: int, config_path: Path) -> int:
-    """Read an integer setting from the parsed config file.
-
-    Args:
-        raw_config: The parsed JSON object of the config file.
-        key: The name of the setting.
-        default: The value to return when the key is missing.
-        config_path: Location of the JSON config file, used in the error message.
-
-    Returns:
-        The integer value of the setting.
-
-    Raises:
-        ValueError: When the value is not an integer.
-    """
-    value = raw_config.get(key, default)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"Config key {key} must be an integer. Path={config_path}")
-
-    return value
+        return AppConfig(**{**file_values, **environment_values})
+    except ValidationError as error:
+        raise ValueError(f"Config file has invalid settings. Path={config_path}\n{error}") from error
 
 
 def save_config(config: AppConfig, config_path: Path | None = None) -> None:
@@ -185,17 +143,8 @@ def save_config(config: AppConfig, config_path: Path | None = None) -> None:
     if config_path is None:
         config_path = default_config_path()
 
-    values = {
-        "database_path": str(config.database_path),
-        "directories": [str(directory) for directory in config.directories],
-        "database_backend": config.database_backend.value,
-        "chunk_size_tokens": config.chunk_size_tokens,
-        "chunk_overlap_tokens": config.chunk_overlap_tokens,
-        "embedding_provider": config.embedding_provider.value,
-    }
-    if config.ollama_base_url is not None:
-        values["ollama_base_url"] = config.ollama_base_url
-
+    # Leave out the unset optional keys, so that a model change takes its own chunk size.
+    values = config.model_dump(mode="json", exclude_none=True)
     _write_config_file(config_path, values)
 
 
@@ -205,7 +154,8 @@ def _write_default_config(config_path: Path) -> None:
     Args:
         config_path: Location of the JSON config file to create.
     """
-    save_config(AppConfig(database_path=DEFAULT_DATABASE_PATH), config_path)
+    # model_construct skips the environment variables, so that they are not written into the file.
+    save_config(AppConfig.model_construct(), config_path)
 
 
 def _write_config_file(config_path: Path, values: dict) -> None:
