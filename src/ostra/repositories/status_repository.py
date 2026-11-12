@@ -1,19 +1,17 @@
 import json
 from pathlib import Path
 
-from platformdirs import user_data_path
+from ostra.constants import DATA_DIRECTORY, OWNER_ONLY_DIRECTORY_MODE
 
-from ostra.constants import APP_NAME, OWNER_ONLY_DIRECTORY_MODE
-
-STATUS_PATH = user_data_path(APP_NAME) / "status.json"
+STATUS_PATH = DATA_DIRECTORY / "status.json"
 
 
-def write_status(status_path: Path, status: dict) -> None:
+def write_status(status: dict, status_path: Path = STATUS_PATH) -> None:
     """Write the status of the last run to a JSON file, replacing the previous file.
 
     Args:
-        status_path: Location of the JSON status file.
         status: The values to write.
+        status_path: Location of the JSON status file.
     """
     status_path.parent.mkdir(mode=OWNER_ONLY_DIRECTORY_MODE, parents=True, exist_ok=True)
     temporary_path = status_path.with_suffix(".tmp")

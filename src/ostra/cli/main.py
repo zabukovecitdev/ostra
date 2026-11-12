@@ -1,19 +1,19 @@
 import argparse
 import json
-import logging
 from dataclasses import asdict
 from pathlib import Path
 
+from ostra.cli import configure_logging
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.enums.database_backend import DatabaseBackend
 from ostra.evaluation.evaluation_cases import load_evaluation_cases
 from ostra.evaluation.retrieval_evaluator import RetrievalEvaluator
+from ostra.models.embedding_model_registry import EMBEDDING_MODELS
 from ostra.repositories.config_repository import load_config
 from ostra.repositories.model_index import ModelIndex
 from ostra.repositories.open_chunk_store import open_chunk_store
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.embedding_model_factory import build_embedding_model
-from ostra.services.embedding_model_registry import EMBEDDING_MODELS
 from ostra.services.indexing_service import run_indexing
 
 DEFAULT_SEARCH_LIMIT = 5
@@ -26,9 +26,7 @@ def main(argv: list[str] | None = None):
     Args:
         argv: Command line arguments without the program name. Read sys.argv when None.
     """
-    logging.basicConfig(level=logging.INFO)
-    # The HTTP client logs every request at INFO level. Keep those lines out of the command output.
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    configure_logging()
     parser = _build_parser()
     arguments = parser.parse_args(argv)
     if arguments.command is None:

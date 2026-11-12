@@ -1,12 +1,8 @@
 from platformdirs import user_data_path
 
-from ostra.enums.database_backend import DatabaseBackend
-from ostra.enums.embedding_provider_name import EmbeddingProviderName
-
 APP_NAME = "ostra"
-DEFAULT_DATABASE_PATH = user_data_path(APP_NAME) / "ostra.db"
-DEFAULT_DATABASE_BACKEND = DatabaseBackend.SQLITE
-DEFAULT_EMBEDDING_PROVIDER = EmbeddingProviderName.OLLAMA
+DATA_DIRECTORY = user_data_path(APP_NAME)
+DEFAULT_DATABASE_PATH = DATA_DIRECTORY / "ostra.db"
 DEFAULT_CHUNK_OVERLAP_TOKENS = 50
 OWNER_ONLY_DIRECTORY_MODE = 0o700
 OWNER_ONLY_FILE_MODE = 0o600

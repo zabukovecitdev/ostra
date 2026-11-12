@@ -9,9 +9,9 @@ from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.enums.database_backend import DatabaseBackend
 from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
+from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.tokenizers.tokenizer import Tokenizer
-from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
 
 
 class FakeTokenizer(Tokenizer):
@@ -59,7 +59,7 @@ def test_main__database_ready__prints_backend_name(
 def test_main__started__configures_info_logging(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Configure INFO logging when the application starts."""
     basic_config_calls: list[dict] = []
-    monkeypatch.setattr(main.logging, "basicConfig", lambda **kwargs: basic_config_calls.append(kwargs))
+    monkeypatch.setattr(logging, "basicConfig", lambda **kwargs: basic_config_calls.append(kwargs))
     monkeypatch.setattr(main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[]))
 
     main.main(["index"])
@@ -334,6 +334,8 @@ def test_main__positional_folder_with_recursive__parses_both():
 
     assert arguments.folders == [Path("/data/notes")]
     assert arguments.recursive is True
+
+
 def test_main__eval__prints_rank_of_each_case_and_metrics(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ):

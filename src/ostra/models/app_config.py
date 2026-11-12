@@ -3,15 +3,10 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ostra.constants import (
-    DEFAULT_CHUNK_OVERLAP_TOKENS,
-    DEFAULT_DATABASE_BACKEND,
-    DEFAULT_DATABASE_PATH,
-    DEFAULT_EMBEDDING_PROVIDER,
-)
+from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS, DEFAULT_DATABASE_PATH
 from ostra.enums.database_backend import DatabaseBackend
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
-from ostra.services.embedding_model_registry import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS
+from ostra.models.embedding_model_registry import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS
 
 
 class AppConfig(BaseSettings):
@@ -27,11 +22,11 @@ class AppConfig(BaseSettings):
 
     database_path: Path = DEFAULT_DATABASE_PATH
     directories: list[Path] = Field(default_factory=list)
-    database_backend: DatabaseBackend = DEFAULT_DATABASE_BACKEND
+    database_backend: DatabaseBackend = DatabaseBackend.SQLITE
     # None means the default chunk size of the embedding model.
     chunk_size_tokens: int | None = None
     chunk_overlap_tokens: int = DEFAULT_CHUNK_OVERLAP_TOKENS
-    embedding_provider: EmbeddingProviderName = DEFAULT_EMBEDDING_PROVIDER
+    embedding_provider: EmbeddingProviderName = EmbeddingProviderName.OLLAMA
     embedding_model: str = DEFAULT_EMBEDDING_MODEL
     # None means the OLLAMA_BASE_URL environment variable or the local default applies.
     ollama_base_url: str | None = None

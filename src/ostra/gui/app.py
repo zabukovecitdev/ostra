@@ -7,11 +7,11 @@ from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.enums.ollama_state import OllamaState
 from ostra.gui.folder_picker import FolderPicker
 from ostra.gui.theme import BUTTON_PROPS, FIELD_PROPS, apply_theme
+from ostra.models.embedding_model_registry import EMBEDDING_MODELS, get_model_spec
 from ostra.repositories.config_repository import default_config_path, load_config, save_config
 from ostra.repositories.status_repository import read_status
 from ostra.services.chunk_search_service import search_chunks
 from ostra.services.embedding_model_factory import ollama_settings
-from ostra.services.embedding_model_registry import EMBEDDING_MODELS, get_model_spec
 from ostra.services.ollama_status_service import INSTALL_URL, check_ollama, is_valid_server_url, model_url
 
 DEFAULT_PORT = 8765

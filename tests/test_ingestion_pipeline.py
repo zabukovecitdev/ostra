@@ -6,12 +6,12 @@ import pytest
 from ostra.models.document import Document
 from ostra.models.document_record import DocumentRecord
 from ostra.models.embedded_chunk import EmbeddedChunk
+from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.models.vector import Vector
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.sources.file_system_source import FileSystemSource
 from ostra.repositories.chunk_store import ChunkStore
 from ostra.repositories.model_index import ModelIndex
-from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.services.ingestion_pipeline import IngestionPipeline
 from ostra.services.ingestion_runner import run_ingestion
 from ostra.services.text_chunker import TextChunker

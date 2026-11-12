@@ -51,7 +51,6 @@ def index_once(status_path: Path = STATUS_PATH) -> None:
         error = str(exception)
 
     write_status(
-        status_path,
         {
             "started_at": started_at.isoformat(),
             "finished_at": datetime.now(UTC).isoformat(),
@@ -59,6 +58,7 @@ def index_once(status_path: Path = STATUS_PATH) -> None:
             "error": error,
             "message": message,
         },
+        status_path,
     )
 
 

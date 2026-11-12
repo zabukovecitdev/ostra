@@ -1,15 +1,17 @@
 import json
-from pathlib import Path
+from pathlib import Path, PurePath
 
 import pytest
 
-from ostra.models.chunk_match import ChunkMatch
 from ostra.evaluation.evaluation_cases import EvaluationCase, RelevantChunk, load_evaluation_cases
 from ostra.evaluation.retrieval_evaluator import RetrievalEvaluator
+from ostra.models.chunk_match import ChunkMatch
 
 
 def _match(file_path: str, text: str = "", distance: float = 0.3) -> ChunkMatch:
-    return ChunkMatch(file_path=file_path, digest="d", text=text, distance=distance)
+    return ChunkMatch(
+        document_id=file_path, source="file", title=PurePath(file_path).name, digest="d", text=text, distance=distance
+    )
 
 
 def _evaluator(results: dict[str, list[ChunkMatch]], queries: list[str] | None = None) -> RetrievalEvaluator:

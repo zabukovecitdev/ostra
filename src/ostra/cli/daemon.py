@@ -1,6 +1,6 @@
 import argparse
-import logging
 
+from ostra.cli import configure_logging
 from ostra.services.background_indexing_service import run_forever
 from ostra.services.systemd_service import install_service, uninstall_service
 
@@ -13,8 +13,7 @@ def main(argv: list[str] | None = None) -> None:
     Args:
         argv: Command line arguments without the program name. Read sys.argv when None.
     """
-    logging.basicConfig(level=logging.INFO)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    configure_logging()
     arguments = _build_parser().parse_args(argv)
     if arguments.command == "install":
         print(install_service(interval_minutes=arguments.interval))

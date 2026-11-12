@@ -9,9 +9,9 @@ import sqlite_vec
 from conftest import make_spec
 
 from ostra.errors.model_index_mismatch_error import ModelIndexMismatchError
+from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.models.vector import Vector
 from ostra.repositories.sqlite.sqlite_chunk_store import SQLITE_MIGRATIONS_DIRECTORY, SqliteChunkStore
-from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
 
 LOGGER_NAME = "ostra.repositories.sqlite.sqlite_chunk_store"
 POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission modes do not apply on Windows")

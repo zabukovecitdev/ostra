@@ -6,9 +6,9 @@ import pytest
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
+from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.services import background_indexing_service, systemd_service
-from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
 
 
 def test_index_once__config_fails__writes_error_to_status_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

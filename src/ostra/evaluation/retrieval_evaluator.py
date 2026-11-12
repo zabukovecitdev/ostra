@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from statistics import fmean
 
-from ostra.models.chunk_match import ChunkMatch
 from ostra.evaluation.evaluation_cases import EvaluationCase, RelevantChunk
+from ostra.models.chunk_match import ChunkMatch
 
 SearchFunction = Callable[[str, int], list[ChunkMatch]]
 
@@ -111,7 +111,7 @@ def _is_match(match: ChunkMatch, relevant: RelevantChunk) -> bool:
         True when the file path ends with the relevant file and the chunk holds the relevant text.
     """
     relevant_parts = PurePath(relevant.file).parts
-    if PurePath(match.file_path).parts[-len(relevant_parts) :] != relevant_parts:
+    if PurePath(match.document_id).parts[-len(relevant_parts) :] != relevant_parts:
         return False
 
     if relevant.text is None:

@@ -3,7 +3,7 @@ from pathlib import Path
 from nicegui import ui
 
 from ostra.gui.theme import BUTTON_PROPS, FIELD_PROPS
-from ostra.services.folder_listing_service import list_subfolders
+from ostra.services.folder_listing_service import is_folder, list_subfolders
 
 
 class FolderPicker(ui.dialog):
@@ -15,7 +15,7 @@ class FolderPicker(ui.dialog):
 
     def __init__(self, start: Path | None = None):
         super().__init__()
-        self._current = start if start is not None and start.is_dir() else Path.home()
+        self._current = start if start is not None and is_folder(start) else Path.home()
         with self, ui.card().classes("w-full").style("max-width: 560px"):
             ui.label("Choose a folder").classes("text-lg font-semibold")
             self._path_input = (
@@ -30,7 +30,7 @@ class FolderPicker(ui.dialog):
     def _jump(self) -> None:
         """Open the folder that the user typed in the path box, when it exists."""
         target = Path(self._path_input.value).expanduser()
-        if target.is_dir():
+        if is_folder(target):
             self._open(target)
         else:
             ui.notify("This folder does not exist.", type="warning")
