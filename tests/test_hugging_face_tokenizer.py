@@ -27,3 +27,13 @@ def test_count_tokens__word_by_word__matches_whole_text_count():
     per_word_total = sum(counter.count_tokens(word) for word in text.split())
 
     assert per_word_total == counter.count_tokens(text)
+
+
+def test_count_tokens__bge_m3_slovene_text__word_by_word_matches_whole_text_count():
+    """Return the same total for the bge-m3 tokenizer, which marks word starts with a prefix character."""
+    counter = HuggingFaceTokenizer("bge-m3/tokenizer.json")
+    text = "Ljubljana je glavno mesto Slovenije. Čez Šmarno goro vodi pot, ki je dolga dva kilometra."
+
+    per_word_total = sum(counter.count_tokens(word) for word in text.split())
+
+    assert per_word_total == counter.count_tokens(text)

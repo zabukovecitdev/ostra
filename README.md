@@ -12,7 +12,7 @@ A local retrieval pipeline for personal text files. It splits each file into tok
 
 - **Token-based chunking** with configurable size and overlap. Token counts come from the embedding model's own tokenizer, so each chunk fits the model's input limit.
 - **Resumable ingestion.** Each chunk is stored under its content digest. A rerun skips chunks that are already embedded, so an interrupted run continues where it stopped.
-- **Local embeddings** through [Ollama](https://ollama.com), using `mxbai-embed-large` (1024 dimensions).
+- **Local embeddings** through [Ollama](https://ollama.com), using `mxbai-embed-large` or `bge-m3` (both 1024 dimensions). `bge-m3` also handles non-English text such as Slovene.
 - **Vector search** with cosine distance, from the command line.
 - **Two storage backends behind one interface:** SQLite with `sqlite-vec` (default) and Chroma. Switch with a flag or a config key.
 - **Owner-only file permissions** on the database, the config file and their folders. Linux and macOS apply these modes. On Windows they have no effect.
@@ -44,6 +44,7 @@ The layers depend on abstract classes, so a new embedding model or storage backe
 
   ```bash
   ollama pull mxbai-embed-large
+  ollama pull bge-m3          # optional, for multilingual text
   ```
 
 - `make` (optional, for the shortcuts below)
@@ -69,7 +70,7 @@ The config file is `config.json` in your user config folder, for example `~/.con
 | `chunk_size_tokens` | not set | Tokens per chunk. When not set, the default of the embedding model applies (510 for mxbai-embed-large). The value must fit the model input after its special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
 | `embedding_provider` | `ollama` | The service that creates embeddings. Ollama is the only provider now. |
-| `embedding_model` | `mxbai-embed-large` | The embedding model. Each model has its own index in the database, so vectors of two models never mix. `ostra index --model ID` and `ostra search --model ID` override it for one run. |
+| `embedding_model` | `mxbai-embed-large` | The embedding model: `mxbai-embed-large` or `bge-m3`. Use `bge-m3` for non-English text such as Slovene. Each model has its own index in the database, so vectors of two models never mix. `ostra index --model ID` and `ostra search --model ID` override it for one run. |
 | `ollama_base_url` | not set | Address of the Ollama server, for example `http://192.168.1.20:11434`. It wins over `OLLAMA_BASE_URL`. The text of your files is sent to this server. |
 
 Any key can be overridden with an environment variable named `OSTRA_` plus the key in capitals, for example `OSTRA_DATABASE_BACKEND=chroma ostra index`. The variable wins over the config file. A list key takes a JSON list: `OSTRA_DIRECTORIES='["~/notes"]'`. Settings saved from the config page of `ostra-app` include any overrides that were active when it loaded them.

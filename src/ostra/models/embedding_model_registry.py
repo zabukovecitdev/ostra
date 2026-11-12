@@ -16,8 +16,20 @@ MXBAI_EMBED_LARGE = EmbeddingModelSpec(
     tokenizer_file="mxbai-embed-large-v1/tokenizer.json",
 )
 
+# The model accepts 8192 tokens, and it has the special tokens <s> and </s>. It supports more than 100 languages.
+# The chunk size default is the same as for mxbai-embed-large, so that the results of both models compare fairly.
+BGE_M3 = EmbeddingModelSpec(
+    model_id="bge-m3",
+    ollama_model="bge-m3:latest",
+    dimensions=1024,
+    max_tokens=8192,
+    special_tokens=2,
+    default_chunk_size_tokens=510,
+    tokenizer_file="bge-m3/tokenizer.json",
+)
+
 EMBEDDING_MODELS: Mapping[str, EmbeddingModelSpec] = MappingProxyType(
-    {spec.model_id: spec for spec in (MXBAI_EMBED_LARGE,)}
+    {spec.model_id: spec for spec in (MXBAI_EMBED_LARGE, BGE_M3)}
 )
 
 
