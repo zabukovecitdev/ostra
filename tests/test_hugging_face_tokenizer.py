@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ostra.tokenization.hugging_face_tokenizer import HuggingFaceTokenizer
+from ostra.providers.tokenizers.hugging_face_tokenizer import HuggingFaceTokenizer
 
 DATA_DIRECTORY = Path(__file__).parent / "data"
 

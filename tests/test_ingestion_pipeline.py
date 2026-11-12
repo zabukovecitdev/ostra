@@ -3,19 +3,19 @@ from pathlib import Path
 
 import pytest
 
-from ostra.embeddings.base import EmbeddingProvider
-from ostra.embeddings.vector import Vector
-from ostra.hashing import hash_text
-from ostra.models.registry import MXBAI_EMBED_LARGE
-from ostra.pipeline.ingestion_pipeline import IngestionPipeline
-from ostra.pipeline.ingestion_runner import run_ingestion
+from ostra.models.document import Document
+from ostra.models.document_record import DocumentRecord
+from ostra.models.embedded_chunk import EmbeddedChunk
+from ostra.models.vector import Vector
+from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
+from ostra.providers.sources.file_system_source import FileSystemSource
+from ostra.repositories.chunk_store import ChunkStore
+from ostra.repositories.model_index import ModelIndex
+from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
+from ostra.services.ingestion_pipeline import IngestionPipeline
+from ostra.services.ingestion_runner import run_ingestion
 from ostra.services.text_chunker import TextChunker
-from ostra.sources.base import Document
-from ostra.sources.file_system_source import FileSystemSource
-from ostra.store.chunk_store import ChunkStore
-from ostra.store.document_record import DocumentRecord
-from ostra.store.embedded_chunk import EmbeddedChunk
-from ostra.store.model_index import ModelIndex
+from ostra.utils.hashing import hash_text
 
 DATA_DIRECTORY = Path(__file__).parent / "data"
 

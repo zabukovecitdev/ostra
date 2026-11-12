@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from ostra.hashing import hash_file
-from ostra.sources.file_system_source import SOURCE_NAME, FileSystemSource
+from ostra.providers.sources.file_system_source import SOURCE_NAME, FileSystemSource
+from ostra.utils.hashing import hash_file
 
 
 def read_texts(source: FileSystemSource) -> list[str]:
@@ -64,7 +64,7 @@ def test_stream_documents__directory_missing__skips_it_and_logs_warning(
     """Skip a missing directory and log a warning that names it."""
     missing = tmp_path / "missing"
 
-    with caplog.at_level(logging.WARNING, logger="ostra.sources.file_system_source"):
+    with caplog.at_level(logging.WARNING, logger="ostra.providers.sources.file_system_source"):
         documents = list(FileSystemSource(directories=[missing]).stream_documents())
 
     assert documents == []

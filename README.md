@@ -149,7 +149,7 @@ More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
 
 ## Known limitations
 
-- Only top-level files are read. Subfolders are skipped.
+- Only top-level files are read unless `ostra index --recursive` is used. The background indexer reads top-level files only.
 - Only plain text formats are read. PDF and Office files are skipped.
 - A moved file is embedded again, and the rows of deleted files are not removed. See [docs/issues/moved-and-deleted-files.md](docs/issues/moved-and-deleted-files.md).
 - The vector size is fixed by the migration (1024). A model with another size needs a new migration.
@@ -158,8 +158,18 @@ More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
 ## Project layout
 
 ```
-src/ostra/   application code
-tests/              pytest suite and sample text files (tests/data)
+src/ostra/
+  cli/            ostra and ostra-daemon commands: argument parsing and printing only
+  gui/            ostra-app web interface: pages, dialogs and theme only
+  enums/          enumerations (database backend, embedding provider, Ollama state)
+  models/         data classes and settings (AppConfig, Document, Vector, model specs)
+  errors/         exception types
+  services/       application logic (indexing, ingestion pipeline, search, chunking, model registry)
+  repositories/   data layer: chunk stores (SQLite with migrations, Chroma), config and status files
+  providers/      adapters to outside systems: embeddings (Ollama), tokenizers, document sources
+  utils/          small helpers (hashing)
+  constants.py    shared defaults and paths
+tests/            pytest suite and sample text files (tests/data)
 reports/            performance measurements
 docs/issues/        tracked issues with analysis
 ```
@@ -167,6 +177,5 @@ docs/issues/        tracked issues with analysis
 ## Roadmap (planned)
 
 - Move detection and cleanup for moved and deleted files
-- Recursive folder scanning with an option to turn it on
 - Answer generation that cites the source file of each chunk
 - A content-addressed chunk store that shares vectors between identical text

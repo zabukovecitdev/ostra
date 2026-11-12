@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ostra.gui.folder_picker import list_subfolders
+from ostra.services.folder_listing_service import list_subfolders
 
 
 def test_list_subfolders__mixed_content__returns_visible_folders_sorted(tmp_path: Path):

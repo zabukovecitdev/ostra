@@ -8,12 +8,12 @@ import pytest
 import sqlite_vec
 from conftest import make_spec
 
-from ostra.embeddings.vector import Vector
-from ostra.models.registry import MXBAI_EMBED_LARGE
-from ostra.store.model_index_mismatch_error import ModelIndexMismatchError
-from ostra.store.sqlite.sqlite_chunk_store import SQLITE_MIGRATIONS_DIRECTORY, SqliteChunkStore
+from ostra.errors.model_index_mismatch_error import ModelIndexMismatchError
+from ostra.models.vector import Vector
+from ostra.repositories.sqlite.sqlite_chunk_store import SQLITE_MIGRATIONS_DIRECTORY, SqliteChunkStore
+from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
 
-LOGGER_NAME = "ostra.store.sqlite.sqlite_chunk_store"
+LOGGER_NAME = "ostra.repositories.sqlite.sqlite_chunk_store"
 POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission modes do not apply on Windows")
 
 
@@ -227,7 +227,7 @@ def _build_legacy_database(database_path: Path, tmp_path: Path, monkeypatch: pyt
     for migration in sorted(SQLITE_MIGRATIONS_DIRECTORY.glob("00[1-5]_*.sql")):
         (old_migrations / migration.name).write_text(migration.read_text())
 
-    monkeypatch.setattr("ostra.store.sqlite.sqlite_chunk_store.SQLITE_MIGRATIONS_DIRECTORY", old_migrations)
+    monkeypatch.setattr("ostra.repositories.sqlite.sqlite_chunk_store.SQLITE_MIGRATIONS_DIRECTORY", old_migrations)
     store = SqliteChunkStore(database_path)
     store.ensure_database()
     store.migrate()

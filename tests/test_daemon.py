@@ -3,11 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from ostra import daemon, service_manager
-from ostra.config import NO_DIRECTORIES_MESSAGE, AppConfig
-from ostra.embeddings.base import EmbeddingProvider
+from ostra.constants import NO_DIRECTORIES_MESSAGE
+from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
-from ostra.models.registry import MXBAI_EMBED_LARGE
+from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
+from ostra.services import background_indexing_service, systemd_service
+from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
 
 
 def test_index_once__config_fails__writes_error_to_status_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -16,10 +17,10 @@ def test_index_once__config_fails__writes_error_to_status_file(tmp_path: Path, m
     def fail_to_load():
         raise ValueError("bad config")
 
-    monkeypatch.setattr(daemon, "load_config", fail_to_load)
+    monkeypatch.setattr(background_indexing_service, "load_config", fail_to_load)
     status_path = tmp_path / "status.json"
 
-    daemon.index_once(status_path=status_path)
+    background_indexing_service.index_once(status_path=status_path)
 
     status = json.loads(status_path.read_text())
     assert status["error"] == "bad config"
@@ -31,11 +32,13 @@ def test_index_once__empty_directory__writes_status_without_error(tmp_path: Path
     notes = tmp_path / "notes"
     notes.mkdir()
     config = AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
-    monkeypatch.setattr(daemon, "load_config", lambda: config)
-    monkeypatch.setattr(daemon, "build_embedding_model", lambda config, model_id=None: _fake_model())
+    monkeypatch.setattr(background_indexing_service, "load_config", lambda: config)
+    monkeypatch.setattr(
+        background_indexing_service, "build_embedding_model", lambda config, model_id=None: _fake_model()
+    )
     status_path = tmp_path / "status.json"
 
-    daemon.index_once(status_path=status_path)
+    background_indexing_service.index_once(status_path=status_path)
 
     status = json.loads(status_path.read_text())
     assert status["error"] is None
@@ -44,17 +47,17 @@ def test_index_once__empty_directory__writes_status_without_error(tmp_path: Path
 
 def test_unit_template__interval_given__puts_interval_in_exec_start():
     """Write the interval in the ExecStart line of the unit."""
-    unit = service_manager.UNIT_TEMPLATE.format(executable="/bin/ostra-daemon", interval_minutes=5)
+    unit = systemd_service.UNIT_TEMPLATE.format(executable="/bin/ostra-daemon", interval_minutes=5)
 
     assert "ExecStart=/bin/ostra-daemon run --interval 5" in unit
 
 
 def test_uninstall_service__unit_missing__reports_not_installed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Return a message and run no systemctl command when the unit file is missing."""
-    monkeypatch.setattr(service_manager, "_require_systemd", lambda: None)
-    monkeypatch.setattr(service_manager, "unit_path", lambda: tmp_path / "missing.service")
+    monkeypatch.setattr(systemd_service, "_require_systemd", lambda: None)
+    monkeypatch.setattr(systemd_service, "unit_path", lambda: tmp_path / "missing.service")
 
-    assert service_manager.uninstall_service() == "Service is not installed."
+    assert systemd_service.uninstall_service() == "Service is not installed."
 
 
 class _FakeProvider(EmbeddingProvider):
@@ -70,10 +73,10 @@ class _FakeTokenizer:
 def test_index_once__no_directories__writes_message_and_no_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Tell the user to add folders and report no error when the folder list is empty."""
     config = AppConfig(database_path=tmp_path / "ostra.db")
-    monkeypatch.setattr(daemon, "load_config", lambda: config)
+    monkeypatch.setattr(background_indexing_service, "load_config", lambda: config)
     status_path = tmp_path / "status.json"
 
-    daemon.index_once(status_path=status_path)
+    background_indexing_service.index_once(status_path=status_path)
 
     status = json.loads(status_path.read_text())
     assert status["error"] is None

@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from ostra.config import AppConfig
-from ostra.models.factory import build_embedding_model, ollama_settings
-from ostra.models.registry import MXBAI_EMBED_LARGE
-from ostra.tokenization.hugging_face_tokenizer import HuggingFaceTokenizer
+from ostra.models.app_config import AppConfig
+from ostra.providers.tokenizers.hugging_face_tokenizer import HuggingFaceTokenizer
+from ostra.services.embedding_model_factory import build_embedding_model, ollama_settings
+from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
 
 
 def test_ollama_settings__base_url_in_config__overrides_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

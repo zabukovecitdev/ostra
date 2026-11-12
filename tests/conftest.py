@@ -3,11 +3,11 @@ from pathlib import Path
 
 import pytest
 
+from ostra.enums.database_backend import DatabaseBackend
 from ostra.models.embedding_model_spec import EmbeddingModelSpec
-from ostra.store.chunk_store import ChunkStore
-from ostra.store.database_backend import DatabaseBackend
-from ostra.store.model_index import ModelIndex
-from ostra.store.open_chunk_store import open_chunk_store
+from ostra.repositories.chunk_store import ChunkStore
+from ostra.repositories.model_index import ModelIndex
+from ostra.repositories.open_chunk_store import open_chunk_store
 
 
 def make_spec(model_id: str, dimensions: int, **overrides) -> EmbeddingModelSpec:

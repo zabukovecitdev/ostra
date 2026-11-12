@@ -4,13 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from ostra import main
-from ostra.config import NO_DIRECTORIES_MESSAGE, AppConfig
-from ostra.embeddings.base import EmbeddingProvider
+from ostra.cli import main
+from ostra.constants import NO_DIRECTORIES_MESSAGE
+from ostra.enums.database_backend import DatabaseBackend
+from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
-from ostra.models.registry import MXBAI_EMBED_LARGE
-from ostra.store.database_backend import DatabaseBackend
-from ostra.tokenization.base import Tokenizer
+from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
+from ostra.providers.tokenizers.tokenizer import Tokenizer
+from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
 
 
 class FakeTokenizer(Tokenizer):

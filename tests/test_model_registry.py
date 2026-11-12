@@ -2,7 +2,12 @@ from dataclasses import replace
 
 import pytest
 
-from ostra.models.registry import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS, MXBAI_EMBED_LARGE, get_model_spec
+from ostra.services.embedding_model_registry import (
+    DEFAULT_EMBEDDING_MODEL,
+    EMBEDDING_MODELS,
+    MXBAI_EMBED_LARGE,
+    get_model_spec,
+)
 
 
 def test_embedding_models__each_entry__is_keyed_by_its_model_id():

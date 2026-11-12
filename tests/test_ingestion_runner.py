@@ -3,8 +3,9 @@ from collections.abc import Iterable, Iterator
 
 import pytest
 
-from ostra.pipeline.ingestion_runner import run_ingestion
-from ostra.sources.base import Document, DocumentSource
+from ostra.models.document import Document
+from ostra.providers.sources.document_source import DocumentSource
+from ostra.services.ingestion_runner import run_ingestion
 
 
 def make_document(number: int) -> Document:

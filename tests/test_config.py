@@ -5,16 +5,10 @@ from pathlib import Path
 import pytest
 from platformdirs import user_data_path
 
-from ostra.config import (
-    DEFAULT_CHUNK_OVERLAP_TOKENS,
-    DEFAULT_CONFIG_PATH,
-    DEFAULT_DATABASE_PATH,
-    AppConfig,
-    default_config_path,
-    load_config,
-    save_config,
-)
-from ostra.store.database_backend import DatabaseBackend
+from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS, DEFAULT_DATABASE_PATH
+from ostra.enums.database_backend import DatabaseBackend
+from ostra.models.app_config import AppConfig
+from ostra.repositories.config_repository import DEFAULT_CONFIG_PATH, default_config_path, load_config, save_config
 
 
 def test_load_config__config_file_missing__returns_default_settings(tmp_path: Path):
@@ -140,7 +134,7 @@ def test_default_config_path__legacy_file_exists__returns_legacy_path(tmp_path: 
     legacy_path = tmp_path / "ostra" / "config.json"
     legacy_path.parent.mkdir()
     legacy_path.write_text("{}")
-    monkeypatch.setattr("ostra.config.LEGACY_CONFIG_PATH", legacy_path)
+    monkeypatch.setattr("ostra.repositories.config_repository.LEGACY_CONFIG_PATH", legacy_path)
 
     assert default_config_path() == legacy_path
 
@@ -149,7 +143,7 @@ def test_default_config_path__legacy_file_missing__returns_user_config_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     """Return the config path in the user config folder when no legacy config file exists."""
-    monkeypatch.setattr("ostra.config.LEGACY_CONFIG_PATH", tmp_path / "missing" / "config.json")
+    monkeypatch.setattr("ostra.repositories.config_repository.LEGACY_CONFIG_PATH", tmp_path / "missing" / "config.json")
 
     assert default_config_path() == DEFAULT_CONFIG_PATH
 

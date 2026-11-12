@@ -36,8 +36,8 @@ gui = [
 ]
 
 [project.scripts]
-ostra = "ostra.main:main"
-ostra-daemon = "ostra.daemon:main"
+ostra = "ostra.cli.main:main"
+ostra-daemon = "ostra.cli.daemon:main"
 ostra-app = "ostra.gui.app:main"
 
 [build-system]
