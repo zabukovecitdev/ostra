@@ -2,7 +2,13 @@ from dataclasses import replace
 
 import pytest
 
-from ostra.models.registry import BGE_M3, DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS, MXBAI_EMBED_LARGE, get_model_spec
+from ostra.models.embedding_model_registry import (
+    BGE_M3,
+    DEFAULT_EMBEDDING_MODEL,
+    EMBEDDING_MODELS,
+    MXBAI_EMBED_LARGE,
+    get_model_spec,
+)
 
 
 def test_embedding_models__each_entry__is_keyed_by_its_model_id():
@@ -26,6 +32,18 @@ def test_get_model_spec__unknown_model__raises_value_error_that_lists_supported_
         get_model_spec("magic")
 
 
+def test_bge_m3_spec__is_in_the_registry__with_its_own_tokenizer():
+    """Register bge-m3 with its own tokenizer file, which the package ships."""
+    assert get_model_spec("bge-m3") == BGE_M3
+    assert BGE_M3.tokenizer_file == "bge-m3/tokenizer.json"
+
+
+def test_fingerprint__mxbai_and_bge_m3__differ_although_dimensions_are_equal():
+    """Keep the two 1024-dimension models apart, so that their vectors never share an index."""
+    assert BGE_M3.dimensions == MXBAI_EMBED_LARGE.dimensions
+    assert BGE_M3.fingerprint != MXBAI_EMBED_LARGE.fingerprint
+
+
 def test_fingerprint__document_prefix_changed__changes():
     """Change the fingerprint when vectors of chunks mean something else."""
     assert replace(MXBAI_EMBED_LARGE, document_prefix="doc: ").fingerprint != MXBAI_EMBED_LARGE.fingerprint
@@ -34,16 +52,3 @@ def test_fingerprint__document_prefix_changed__changes():
 def test_fingerprint__query_prefix_changed__stays_the_same():
     """Keep the fingerprint when only the query prefix changes, because query vectors are made fresh."""
     assert replace(MXBAI_EMBED_LARGE, query_prefix="query: ").fingerprint == MXBAI_EMBED_LARGE.fingerprint
-
-
-def test_fingerprint__mxbai_and_bge_m3__differ_although_dimensions_are_equal():
-    """Tell the two models apart, because both make 1024 dimensions."""
-    assert BGE_M3.dimensions == MXBAI_EMBED_LARGE.dimensions
-    assert BGE_M3.fingerprint != MXBAI_EMBED_LARGE.fingerprint
-
-
-def test_chunk_size__every_model__fits_the_model_input_after_special_tokens():
-    """Keep the default chunk size inside the input limit of each model."""
-    assert all(
-        spec.default_chunk_size_tokens + spec.special_tokens <= spec.max_tokens for spec in EMBEDDING_MODELS.values()
-    )

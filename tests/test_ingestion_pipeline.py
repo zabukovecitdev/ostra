@@ -3,19 +3,19 @@ from pathlib import Path
 
 import pytest
 
-from ostra.embeddings.base import EmbeddingProvider
-from ostra.embeddings.vector import Vector
-from ostra.hashing import hash_text
-from ostra.models.registry import MXBAI_EMBED_LARGE
-from ostra.pipeline.ingestion_pipeline import IngestionPipeline
-from ostra.pipeline.ingestion_runner import run_ingestion
+from ostra.models.document import Document
+from ostra.models.document_record import DocumentRecord
+from ostra.models.embedded_chunk import EmbeddedChunk
+from ostra.models.vector import Vector
+from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
+from ostra.providers.sources.file_system_source import FileSystemSource
+from ostra.repositories.chunk_store import ChunkStore
+from ostra.repositories.model_index import ModelIndex
+from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
+from ostra.services.ingestion_pipeline import IngestionPipeline
+from ostra.services.ingestion_runner import run_ingestion
 from ostra.services.text_chunker import TextChunker
-from ostra.sources.base import Document
-from ostra.sources.file_system_source import FileSystemSource
-from ostra.store.chunk_store import ChunkStore
-from ostra.store.document_record import DocumentRecord
-from ostra.store.embedded_chunk import EmbeddedChunk
-from ostra.store.model_index import ModelIndex
+from ostra.utils.hashing import hash_text
 
 DATA_DIRECTORY = Path(__file__).parent / "data"
 
@@ -34,8 +34,8 @@ class FakeEmbeddingProvider(EmbeddingProvider):
         self.calls: list[str] = []
 
     def _embed(self, text: str) -> list[float]:
-        """Record the text and return a three-value vector for it."""
-        self.calls.append(text)
+        """Record the text without its document prefix and return a vector for it."""
+        self.calls.append(text.removeprefix(self._spec.document_prefix))
         return [float(len(text))] + [0.5] * 1023
 
 
@@ -47,9 +47,10 @@ def one_token_per_word(word: str) -> int:
 class FolderIngestion:
     """Run a pipeline on the files of one folder through the queue, as the application does."""
 
-    def __init__(self, directory: Path, pipeline: IngestionPipeline):
+    def __init__(self, directory: Path, pipeline: IngestionPipeline, provider: FakeEmbeddingProvider):
         self._directory = directory
         self._pipeline = pipeline
+        self.provider = provider
 
     def process_files(self) -> None:
         """Read the files of the folder and process them."""
@@ -62,9 +63,10 @@ def make_service(
     reindex: bool = False,
     chunk_size_tokens: int = 510,
     chunk_overlap_tokens: int = 50,
-    embedding_provider: EmbeddingProvider | None = None,
+    embedding_provider: FakeEmbeddingProvider | None = None,
 ) -> FolderIngestion:
     """Build an ingestion that reads one directory and stores results through the index."""
+    provider = embedding_provider or FakeEmbeddingProvider()
     pipeline = IngestionPipeline(
         model_index=index,
         chunker=TextChunker(
@@ -72,10 +74,10 @@ def make_service(
             chunk_overlap_tokens=chunk_overlap_tokens,
             count_tokens=one_token_per_word,
         ),
-        embedding_provider=embedding_provider or FakeEmbeddingProvider(),
+        embedding_provider=provider,
         reindex=reindex,
     )
-    return FolderIngestion(directory, pipeline)
+    return FolderIngestion(directory, pipeline, provider)
 
 
 def stored_chunks(index: ModelIndex, file_path: Path) -> set[str]:
@@ -83,13 +85,14 @@ def stored_chunks(index: ModelIndex, file_path: Path) -> set[str]:
     return index.stored_digests(str(file_path))
 
 
-def test_process_files__new_file__prints_each_chunk(index, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
-    """Print the words of a new file as one chunk when the file is shorter than the chunk size."""
+def test_process_files__new_file__embeds_one_chunk(index, tmp_path: Path):
+    """Embed the words of a new file as one chunk when the file is shorter than the chunk size."""
     (tmp_path / "a.txt").write_text("alpha\nbeta\n")
+    service = make_service(index, tmp_path)
 
-    make_service(index, tmp_path).process_files()
+    service.process_files()
 
-    assert capsys.readouterr().out == "alpha beta\n"
+    assert service.provider.calls == ["alpha beta"]
 
 
 def test_process_files__new_file__saves_digest_of_each_chunk(index, tmp_path: Path):
@@ -102,37 +105,39 @@ def test_process_files__new_file__saves_digest_of_each_chunk(index, tmp_path: Pa
     assert stored_chunks(index, file_path) == {hash_text("alpha beta")}
 
 
-def test_process_files__identical_chunks__prints_the_chunk_once(index, tmp_path: Path, capsys):
-    """Print a repeated chunk only once within one file."""
+def test_process_files__identical_chunks__embeds_the_chunk_once(index, tmp_path: Path):
+    """Embed a repeated chunk only once within one file."""
     (tmp_path / "a.txt").write_text("same\nsame\n")
+    service = make_service(index, tmp_path, chunk_size_tokens=1, chunk_overlap_tokens=0)
 
-    make_service(index, tmp_path, chunk_size_tokens=1, chunk_overlap_tokens=0).process_files()
+    service.process_files()
 
-    assert capsys.readouterr().out == "same\n"
+    assert service.provider.calls == ["same"]
 
 
-def test_process_files__overlapping_chunks__prints_each_chunk_with_overlap(index, tmp_path: Path, capsys):
-    """Print each chunk, and start each chunk with the words that overlap the previous chunk."""
+def test_process_files__overlapping_chunks__embeds_each_chunk_with_overlap(index, tmp_path: Path):
+    """Embed each chunk, and start each chunk with the words that overlap the previous chunk."""
     (tmp_path / "a.txt").write_text("a b c d e\n")
+    service = make_service(index, tmp_path, chunk_size_tokens=3, chunk_overlap_tokens=1)
 
-    make_service(index, tmp_path, chunk_size_tokens=3, chunk_overlap_tokens=1).process_files()
+    service.process_files()
 
-    assert capsys.readouterr().out == "a b c\nc d e\n"
+    assert service.provider.calls == ["a b c", "c d e"]
 
 
-def test_process_files__second_run_file_unchanged__prints_nothing(index, tmp_path: Path, capsys):
-    """Print no chunks on a second run when the file did not change."""
+def test_process_files__second_run_file_unchanged__embeds_nothing(index, tmp_path: Path):
+    """Embed no chunks on a second run when the file did not change."""
     (tmp_path / "a.txt").write_text("alpha\nbeta\n")
     service = make_service(index, tmp_path)
     service.process_files()
-    capsys.readouterr()
+    service.provider.calls.clear()
 
     service.process_files()
 
-    assert capsys.readouterr().out == ""
+    assert service.provider.calls == []
 
 
-def test_process_files__run_stopped_after_first_chunk__resumes_at_next_chunk(index, tmp_path: Path, capsys):
+def test_process_files__run_stopped_after_first_chunk__resumes_at_next_chunk(index, tmp_path: Path):
     """Skip the chunks that a stopped run already saved and process the remaining chunks."""
     file_path = tmp_path / "a.txt"
     file_path.write_text("alpha\nbeta\ngamma\n")
@@ -142,37 +147,39 @@ def test_process_files__run_stopped_after_first_chunk__resumes_at_next_chunk(ind
         current_digests={hash_text("alpha")},
     )
 
-    make_service(index, tmp_path, chunk_size_tokens=1, chunk_overlap_tokens=0).process_files()
+    service = make_service(index, tmp_path, chunk_size_tokens=1, chunk_overlap_tokens=0)
 
-    assert capsys.readouterr().out == "beta\ngamma\n"
+    service.process_files()
+
+    assert service.provider.calls == ["beta", "gamma"]
 
 
-def test_process_files__chunk_changed__prints_only_the_changed_chunk(index, tmp_path: Path, capsys):
-    """Print only the chunk whose content changed since the last run."""
+def test_process_files__chunk_changed__embeds_only_the_changed_chunk(index, tmp_path: Path):
+    """Embed only the chunk whose content changed since the last run."""
     file_path = tmp_path / "a.txt"
     file_path.write_text("alpha\nbeta\n")
     service = make_service(index, tmp_path, chunk_size_tokens=1, chunk_overlap_tokens=0)
     service.process_files()
-    capsys.readouterr()
+    service.provider.calls.clear()
     file_path.write_text("alpha\nbeta changed\n")
 
     service.process_files()
 
-    assert capsys.readouterr().out == "changed\n"
+    assert service.provider.calls == ["changed"]
 
 
-def test_process_files__word_inserted_above__prints_only_the_new_chunk(index, tmp_path: Path, capsys):
-    """Print only the new chunk when a word is inserted above existing chunks."""
+def test_process_files__word_inserted_above__embeds_only_the_new_chunk(index, tmp_path: Path):
+    """Embed only the new chunk when a word is inserted above existing chunks."""
     file_path = tmp_path / "a.txt"
     file_path.write_text("alpha\nbeta\n")
     service = make_service(index, tmp_path, chunk_size_tokens=1, chunk_overlap_tokens=0)
     service.process_files()
-    capsys.readouterr()
+    service.provider.calls.clear()
     file_path.write_text("new\nalpha\nbeta\n")
 
     service.process_files()
 
-    assert capsys.readouterr().out == "new\n"
+    assert service.provider.calls == ["new"]
 
 
 def test_process_files__file_got_shorter__deletes_digests_of_removed_chunks(index, tmp_path: Path):
@@ -188,24 +195,25 @@ def test_process_files__file_got_shorter__deletes_digests_of_removed_chunks(inde
     assert stored_chunks(index, file_path) == {hash_text("alpha")}
 
 
-def test_process_files__reindex_and_unchanged_file__prints_every_chunk_again(index, tmp_path: Path, capsys):
-    """Print every chunk again on a reindex run even when the file did not change."""
+def test_process_files__reindex_and_unchanged_file__embeds_every_chunk_again(index, tmp_path: Path):
+    """Embed every chunk again on a reindex run even when the file did not change."""
     (tmp_path / "a.txt").write_text("alpha\nbeta\n")
     make_service(index, tmp_path).process_files()
-    capsys.readouterr()
+    service = make_service(index, tmp_path, reindex=True)
 
-    make_service(index, tmp_path, reindex=True).process_files()
+    service.process_files()
 
-    assert capsys.readouterr().out == "alpha beta\n"
+    assert service.provider.calls == ["alpha beta"]
 
 
-def test_process_files__reindex_and_identical_chunks__prints_the_chunk_once(index, tmp_path: Path, capsys):
-    """Print a repeated chunk only once on a reindex run."""
+def test_process_files__reindex_and_identical_chunks__embeds_the_chunk_once(index, tmp_path: Path):
+    """Embed a repeated chunk only once on a reindex run."""
     (tmp_path / "a.txt").write_text("same\nsame\n")
+    service = make_service(index, tmp_path, reindex=True, chunk_size_tokens=1, chunk_overlap_tokens=0)
 
-    make_service(index, tmp_path, reindex=True, chunk_size_tokens=1, chunk_overlap_tokens=0).process_files()
+    service.process_files()
 
-    assert capsys.readouterr().out == "same\n"
+    assert service.provider.calls == ["same"]
 
 
 def test_process_files__reindex_and_chunk_removed__deletes_its_digest(index, tmp_path: Path):
@@ -220,14 +228,15 @@ def test_process_files__reindex_and_chunk_removed__deletes_its_digest(index, tmp
     assert stored_chunks(index, file_path) == {hash_text("alpha")}
 
 
-def test_process_files__long_text_file__chunks_are_sized_and_overlap(index, tmp_path: Path, capsys):
+def test_process_files__long_text_file__chunks_are_sized_and_overlap(index, tmp_path: Path):
     """Split a long file into chunks of at most the chunk size, where each chunk overlaps the next."""
     file_path = tmp_path / "printing_press_history.txt"
     shutil.copy(DATA_DIRECTORY / "printing_press_history.txt", file_path)
     words = file_path.read_text().split()
 
-    make_service(index, tmp_path, chunk_size_tokens=200, chunk_overlap_tokens=20).process_files()
-    chunks = [line.split() for line in capsys.readouterr().out.splitlines()]
+    service = make_service(index, tmp_path, chunk_size_tokens=200, chunk_overlap_tokens=20)
+    service.process_files()
+    chunks = [text.split() for text in service.provider.calls]
 
     assert len(chunks) > 1
     assert all(len(chunk) <= 200 for chunk in chunks)
@@ -309,24 +318,6 @@ def test_process_documents__callback_set__receives_each_document_id(index):
     assert seen == ["note://1", "note://2"]
 
 
-def test_process_documents__started_callback_set__runs_before_processed_callback(index):
-    """Call the started callback before the processed callback of each document."""
-    events: list[str] = []
-    pipeline = IngestionPipeline(
-        model_index=index,
-        chunker=TextChunker(chunk_size_tokens=510, chunk_overlap_tokens=50, count_tokens=one_token_per_word),
-        embedding_provider=FakeEmbeddingProvider(),
-        reindex=False,
-        on_document_processed=lambda document_id: events.append(f"done {document_id}"),
-        on_document_started=lambda document_id: events.append(f"start {document_id}"),
-    )
-    documents = [Document("notes", f"note://{number}", "v", "t", "text") for number in (1, 2)]
-
-    pipeline.process_documents(documents)
-
-    assert events == ["start note://1", "done note://1", "start note://2", "done note://2"]
-
-
 def test_process_documents__embedding_fails_midway__keeps_finished_chunks_and_resumes(index):
     """Keep the chunks that were embedded before an error, and embed only the rest on the next run."""
 
@@ -346,3 +337,24 @@ def test_process_documents__embedding_fails_midway__keeps_finished_chunks_and_re
     IngestionPipeline(index, chunker, provider, reindex=False).process_documents([document])
 
     assert provider.calls == ["gamma"]
+
+
+def test_process_documents__callbacks__started_before_each_document_and_processed_after(index, tmp_path: Path):
+    """Call the started callback before each document is embedded and the processed callback after it."""
+    events: list[str] = []
+    pipeline = IngestionPipeline(
+        model_index=index,
+        chunker=TextChunker(chunk_size_tokens=510, chunk_overlap_tokens=0, count_tokens=one_token_per_word),
+        embedding_provider=FakeEmbeddingProvider(),
+        reindex=False,
+        on_document_processed=lambda document_id: events.append(f"processed {document_id}"),
+        on_document_started=lambda document_id: events.append(f"started {document_id}"),
+    )
+    documents = [
+        Document(source="filesystem", document_id=f"doc{number}", version="v", title="t", text="words here")
+        for number in (1, 2)
+    ]
+
+    pipeline.process_documents(documents)
+
+    assert events == ["started doc1", "processed doc1", "started doc2", "processed doc2"]

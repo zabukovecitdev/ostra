@@ -6,9 +6,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 from conftest import make_spec
 
-from ostra.embeddings.base import EmbeddingProvider
-from ostra.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider, OllamaSettings
-from ostra.embeddings.vector import Vector
+from ostra.models.ollama_settings import OllamaSettings
+from ostra.models.vector import Vector
+from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
+from ostra.providers.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider
 
 SPEC = make_spec("test-model", 3, query_prefix="query: ", document_prefix="doc: ")
 

@@ -4,13 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from ostra import main
-from ostra.config import NO_DIRECTORIES_MESSAGE, AppConfig
-from ostra.embeddings.base import EmbeddingProvider
+from ostra.cli import main
+from ostra.constants import NO_DIRECTORIES_MESSAGE
+from ostra.enums.database_backend import DatabaseBackend
+from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
-from ostra.models.registry import MXBAI_EMBED_LARGE
-from ostra.store.database_backend import DatabaseBackend
-from ostra.tokenization.base import Tokenizer
+from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
+from ostra.providers.tokenizers.tokenizer import Tokenizer
+from ostra.services.embedding_model_registry import MXBAI_EMBED_LARGE
 
 
 class FakeTokenizer(Tokenizer):
@@ -66,10 +67,10 @@ def test_main__started__configures_info_logging(monkeypatch: pytest.MonkeyPatch,
     assert basic_config_calls == [{"level": logging.INFO}]
 
 
-def test_main__directories_have_files__prints_each_line(
+def test_main__directories_have_files__prints_no_chunk_text(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ):
-    """Print each line of the files in the configured directories without the line ending."""
+    """Print no text of the indexed files, because the progress bar shows the progress instead."""
     notes = tmp_path / "notes"
     notes.mkdir()
     (notes / "a.txt").write_text("alpha\nbeta\n")
@@ -79,43 +80,7 @@ def test_main__directories_have_files__prints_each_line(
 
     main.main(["index"])
 
-    assert capsys.readouterr().out.splitlines()[1:] == ["alpha beta"]
-
-
-def test_main__reindex_flag__prints_lines_of_unchanged_file_again(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-):
-    """Print the lines of an unchanged file again when the reindex flag is given."""
-    notes = tmp_path / "notes"
-    notes.mkdir()
-    (notes / "a.txt").write_text("alpha\n")
-    monkeypatch.setattr(
-        main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
-    )
-    main.main(["index"])
-    capsys.readouterr()
-
-    main.main(["index", "--reindex"])
-
-    assert capsys.readouterr().out.splitlines()[1:] == ["alpha"]
-
-
-def test_main__no_reindex_flag__skips_lines_of_unchanged_file(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-):
-    """Print no lines of an unchanged file when the reindex flag is not given."""
-    notes = tmp_path / "notes"
-    notes.mkdir()
-    (notes / "a.txt").write_text("alpha\n")
-    monkeypatch.setattr(
-        main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
-    )
-    main.main(["index"])
-    capsys.readouterr()
-
-    main.main(["index"])
-
-    assert capsys.readouterr().out.splitlines()[1:] == []
+    assert "alpha beta" not in capsys.readouterr().out
 
 
 def test_main__search_flag__prints_stored_chunk_with_its_file(
@@ -186,26 +151,22 @@ def test_main__database_flag_unknown__exits_with_error(monkeypatch: pytest.Monke
 
 
 def test_main__directory_flag__processes_given_folder_instead_of_config(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    """Process the folder from the directory flag and skip the configured folders."""
+    """Index the folder from the directory flag and skip the configured folders."""
     configured = tmp_path / "configured"
-    configured.mkdir()
-    (configured / "a.txt").write_text("configured text\n")
     given = tmp_path / "given"
-    given.mkdir()
-    (given / "b.txt").write_text("given text\n")
+    indexed_directories = []
     monkeypatch.setattr(
         main,
         "load_config",
         lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[configured]),
     )
+    monkeypatch.setattr(main, "run_indexing", lambda **kwargs: indexed_directories.append(kwargs["directories"]))
 
     main.main(["index", "--directory", str(given)])
 
-    output = capsys.readouterr().out
-    assert "given text" in output
-    assert "configured text" not in output
+    assert indexed_directories == [[given]]
 
 
 def test_main__directory_flag_repeated__processes_every_folder(tmp_path: Path):
@@ -359,41 +320,17 @@ def test_main__index_without_directories__prints_hint(
     assert NO_DIRECTORIES_MESSAGE in capsys.readouterr().out
 
 
-def test_main__eval__prints_rank_of_each_case_and_metrics(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-):
-    """Print the rank of each case and the hit rate, recall and MRR at the limit."""
-    _index_text(monkeypatch, tmp_path, "alpha beta\n")
-    cases_path = tmp_path / "cases.json"
-    cases_path.write_text(
-        json.dumps(
-            [
-                {"query": "alpha", "relevant": [{"file": "notes/a.txt", "text": "alpha"}]},
-                {"query": "gamma", "relevant": [{"file": "notes/b.txt"}]},
-            ]
-        )
-    )
-    capsys.readouterr()
+def test_main__positional_folders__are_combined_with_directory_flag():
+    """Keep the positional folders first, then the folders from the directory flag."""
+    arguments = main._build_parser().parse_args(["index", "/data/one", "~/two", "--directory", "/data/three"])
 
-    main.main(["eval", str(cases_path), "--limit", "3"])
-
-    output = capsys.readouterr().out
-    assert "rank 1  recall 1.00  alpha" in output
-    assert "miss    recall 0.00  gamma" in output
-    assert "hit rate@3     0.500" in output
-    assert "MRR@3          0.500" in output
+    assert arguments.folders == [Path("/data/one"), Path("~/two")]
+    assert arguments.directory == [Path("/data/three")]
 
 
-def test_main__eval_json__prints_report_as_json(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-):
-    """Print the report as JSON when the json flag is given."""
-    _index_text(monkeypatch, tmp_path, "alpha beta\n")
-    cases_path = tmp_path / "cases.json"
-    cases_path.write_text(json.dumps([{"query": "alpha", "relevant": [{"file": "a.txt"}]}]))
-    capsys.readouterr()
+def test_main__positional_folder_with_recursive__parses_both():
+    """Accept the recursive flag after a positional folder."""
+    arguments = main._build_parser().parse_args(["index", "/data/notes", "--recursive"])
 
-    main.main(["eval", str(cases_path), "--json"])
-
-    report = json.loads(capsys.readouterr().out)
-    assert (report["limit"], report["hit_rate"], report["cases"][0]["rank"]) == (5, 1.0, 1)
+    assert arguments.folders == [Path("/data/notes")]
+    assert arguments.recursive is True

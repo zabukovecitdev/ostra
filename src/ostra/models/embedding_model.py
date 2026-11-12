@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
-from ostra.embeddings.base import EmbeddingProvider
 from ostra.models.embedding_model_spec import EmbeddingModelSpec
-from ostra.tokenization.base import Tokenizer
+from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
+from ostra.providers.tokenizers.tokenizer import Tokenizer
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 # Model registry and chunk store
 
-Status: steps 1 and 2 are built (store, model indexes, migration 006, registry, vector identity, prefixes). Step 3 is partly built: bge-m3 and its tokenizer are in the registry. nomic-embed-text is not built.
+Status: steps 1 and 2 are built (store, model indexes, migration 006, registry, vector identity, prefixes). Step 3 (nomic-embed-text, bge-m3 and their tokenizers) is not built.
 
 ## Problem
 

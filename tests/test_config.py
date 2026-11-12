@@ -5,16 +5,10 @@ from pathlib import Path
 import pytest
 from platformdirs import user_data_path
 
-from ostra.config import (
-    DEFAULT_CHUNK_OVERLAP_TOKENS,
-    DEFAULT_CONFIG_PATH,
-    DEFAULT_DATABASE_PATH,
-    AppConfig,
-    default_config_path,
-    load_config,
-    save_config,
-)
-from ostra.store.database_backend import DatabaseBackend
+from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS, DEFAULT_DATABASE_PATH
+from ostra.enums.database_backend import DatabaseBackend
+from ostra.models.app_config import AppConfig
+from ostra.repositories.config_repository import DEFAULT_CONFIG_PATH, default_config_path, load_config, save_config
 
 
 def test_load_config__config_file_missing__returns_default_settings(tmp_path: Path):
@@ -117,7 +111,7 @@ def test_load_config__directories_not_a_list__raises_value_error(tmp_path: Path)
     config_path = tmp_path / "config.json"
     config_path.write_text('{"directories": "/data/notes"}')
 
-    with pytest.raises(ValueError, match="must be a list"):
+    with pytest.raises(ValueError, match=r"directories\n.*valid list"):
         load_config(config_path)
 
 
@@ -140,7 +134,7 @@ def test_default_config_path__legacy_file_exists__returns_legacy_path(tmp_path: 
     legacy_path = tmp_path / "ostra" / "config.json"
     legacy_path.parent.mkdir()
     legacy_path.write_text("{}")
-    monkeypatch.setattr("ostra.config.LEGACY_CONFIG_PATH", legacy_path)
+    monkeypatch.setattr("ostra.repositories.config_repository.LEGACY_CONFIG_PATH", legacy_path)
 
     assert default_config_path() == legacy_path
 
@@ -149,7 +143,7 @@ def test_default_config_path__legacy_file_missing__returns_user_config_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     """Return the config path in the user config folder when no legacy config file exists."""
-    monkeypatch.setattr("ostra.config.LEGACY_CONFIG_PATH", tmp_path / "missing" / "config.json")
+    monkeypatch.setattr("ostra.repositories.config_repository.LEGACY_CONFIG_PATH", tmp_path / "missing" / "config.json")
 
     assert default_config_path() == DEFAULT_CONFIG_PATH
 
@@ -176,13 +170,13 @@ def test_load_config__chunk_settings_set__returns_configured_values(tmp_path: Pa
     assert config.chunk_overlap_tokens == 100
 
 
-@pytest.mark.parametrize("value", ['"800"', "1.5", "true"])
+@pytest.mark.parametrize("value", ['"many"', "1.5", "true"])
 def test_load_config__chunk_size_not_an_integer__raises_value_error(tmp_path: Path, value: str):
     """Raise ValueError when the chunk size is not an integer."""
     config_path = tmp_path / "config.json"
     config_path.write_text(f'{{"chunk_size_tokens": {value}}}')
 
-    with pytest.raises(ValueError, match="chunk_size_tokens must be an integer"):
+    with pytest.raises(ValueError, match=r"chunk_size_tokens\n"):
         load_config(config_path)
 
 
@@ -207,7 +201,7 @@ def test_load_config__backend_not_supported__raises_value_error(tmp_path: Path):
     config_path = tmp_path / "config.json"
     config_path.write_text('{"database_backend": "postgres"}')
 
-    with pytest.raises(ValueError, match="database_backend must be one of sqlite, chroma"):
+    with pytest.raises(ValueError, match=r"database_backend\n.*'sqlite' or 'chroma'"):
         load_config(config_path)
 
 
@@ -264,7 +258,7 @@ def test_load_config__embedding_model_unknown__raises_value_error_that_lists_sup
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps({"embedding_model": "magic"}))
 
-    with pytest.raises(ValueError, match="embedding_model must be one of mxbai-embed-large"):
+    with pytest.raises(ValueError, match=r"embedding_model\n.*must be one of mxbai-embed-large"):
         load_config(config_path)
 
 
@@ -283,3 +277,58 @@ def test_load_config__old_file_with_chunk_size_510__keeps_the_value(tmp_path: Pa
     config_path.write_text('{"chunk_size_tokens": 510}')
 
     assert load_config(config_path).chunk_size_tokens == 510
+
+
+def test_load_config__environment_variable_set__overrides_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Let an OSTRA_ environment variable override the key of the same name in the config file."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"database_backend": "sqlite", "chunk_overlap_tokens": 20}')
+    monkeypatch.setenv("OSTRA_DATABASE_BACKEND", "chroma")
+    monkeypatch.setenv("OSTRA_CHUNK_SIZE_TOKENS", "800")
+
+    config = load_config(config_path)
+
+    assert config.database_backend is DatabaseBackend.CHROMA
+    assert config.chunk_size_tokens == 800
+    assert config.chunk_overlap_tokens == 20
+
+
+def test_load_config__directories_environment_variable__reads_json_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Read OSTRA_DIRECTORIES as a JSON list and expand a leading tilde."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}")
+    monkeypatch.setenv("OSTRA_DIRECTORIES", '["~/notes", "/data"]')
+
+    assert load_config(config_path).directories == [Path.home() / "notes", Path("/data")]
+
+
+def test_load_config__config_file_missing_and_environment_set__writes_only_defaults_to_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Keep environment overrides out of the new config file, but apply them to the returned settings."""
+    config_path = tmp_path / "config.json"
+    monkeypatch.setenv("OSTRA_DATABASE_BACKEND", "chroma")
+
+    config = load_config(config_path)
+
+    assert config.database_backend is DatabaseBackend.CHROMA
+    assert json.loads(config_path.read_text())["database_backend"] == "sqlite"
+
+
+def test_load_config__unknown_key__is_ignored(tmp_path: Path):
+    """Ignore keys that the settings do not know, so that an older or newer config file still loads."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"removed_setting": 1}')
+
+    assert load_config(config_path).database_backend is DatabaseBackend.SQLITE
+
+
+def test_load_config__file_is_not_an_object__raises_value_error(tmp_path: Path):
+    """Raise ValueError when the config file holds JSON that is not an object."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("[]")
+
+    with pytest.raises(ValueError, match="must contain a JSON object"):
+        load_config(config_path)

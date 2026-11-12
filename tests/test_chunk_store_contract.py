@@ -6,15 +6,15 @@ import pytest
 from chromadb.api.shared_system_client import SharedSystemClient
 from conftest import TEST_SPEC, make_spec
 
-from ostra.embeddings.vector import Vector
-from ostra.store.chunk_store import ChunkStore
-from ostra.store.database_backend import DatabaseBackend
-from ostra.store.document_record import DocumentRecord
-from ostra.store.embedded_chunk import EmbeddedChunk
-from ostra.store.model_index import ModelIndex
-from ostra.store.model_index_mismatch_error import ModelIndexMismatchError
-from ostra.store.model_not_indexed_error import ModelNotIndexedError
-from ostra.store.open_chunk_store import open_chunk_store
+from ostra.enums.database_backend import DatabaseBackend
+from ostra.errors.model_index_mismatch_error import ModelIndexMismatchError
+from ostra.errors.model_not_indexed_error import ModelNotIndexedError
+from ostra.models.document_record import DocumentRecord
+from ostra.models.embedded_chunk import EmbeddedChunk
+from ostra.models.vector import Vector
+from ostra.repositories.chunk_store import ChunkStore
+from ostra.repositories.model_index import ModelIndex
+from ostra.repositories.open_chunk_store import open_chunk_store
 
 OTHER_SPEC = make_spec("other-model", 3)
 

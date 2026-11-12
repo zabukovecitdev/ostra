@@ -2,9 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from ostra.embeddings.ollama_embedding_provider import OllamaSettings
-from ostra.gui import ollama_status
-from ostra.gui.ollama_status import OllamaState, check_ollama, is_valid_server_url, model_url
+from ostra.enums.ollama_state import OllamaState
+from ostra.models.ollama_settings import OllamaSettings
+from ostra.services import ollama_status_service
+from ostra.services.ollama_status_service import check_ollama, is_valid_server_url, model_url
 
 
 class _FakeClient:
@@ -19,7 +20,7 @@ class _FakeClient:
 
 
 def _patch_client(monkeypatch: pytest.MonkeyPatch, models: list[str] | None) -> None:
-    monkeypatch.setattr(ollama_status, "Client", lambda host, timeout: _FakeClient(models))
+    monkeypatch.setattr(ollama_status_service, "Client", lambda host, timeout: _FakeClient(models))
 
 
 def test_check_ollama__model_installed__returns_ready(monkeypatch: pytest.MonkeyPatch):
