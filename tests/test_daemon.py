@@ -8,7 +8,7 @@ from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
 from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
-from ostra.services import background_indexing_service, systemd_service
+from ostra.services import background_indexing_service, index_session, systemd_service
 
 
 def test_index_once__config_fails__writes_error_to_status_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -33,9 +33,7 @@ def test_index_once__empty_directory__writes_status_without_error(tmp_path: Path
     notes.mkdir()
     config = AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
     monkeypatch.setattr(background_indexing_service, "load_config", lambda: config)
-    monkeypatch.setattr(
-        background_indexing_service, "build_embedding_model", lambda config, model_id=None: _fake_model()
-    )
+    monkeypatch.setattr(index_session, "build_embedding_model", lambda config, model_id=None: _fake_model())
     status_path = tmp_path / "status.json"
 
     background_indexing_service.index_once(status_path=status_path)

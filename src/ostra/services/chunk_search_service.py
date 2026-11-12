@@ -1,15 +1,14 @@
 from ostra.models.app_config import AppConfig
 from ostra.models.chunk_match import ChunkMatch
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
-from ostra.repositories.model_index import ModelIndex
-from ostra.repositories.open_chunk_store import open_chunk_store
-from ostra.services.embedding_model_factory import build_embedding_model
+from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
+from ostra.services.index_session import open_index
 
 
 class ChunkSearchService:
     """Find the stored chunks that are closest in meaning to a query text."""
 
-    def __init__(self, embedding_provider: EmbeddingProvider, model_index: ModelIndex):
+    def __init__(self, embedding_provider: EmbeddingProvider, model_index: SqliteModelIndex):
         self._embedding_provider = embedding_provider
         self._model_index = model_index
 
@@ -43,10 +42,8 @@ def search_chunks(config: AppConfig, query: str, limit: int, max_distance: float
     Returns:
         The closest chunks, nearest first.
     """
-    embedding_model = build_embedding_model(config)
-    with open_chunk_store(config.database_backend, config.database_path) as store:
+    with open_index(config) as session:
         service = ChunkSearchService(
-            embedding_provider=embedding_model.provider,
-            model_index=store.model_index(embedding_model.spec, create=False),
+            embedding_provider=session.embedding_model.provider, model_index=session.model_index
         )
         return service.search(query=query, limit=limit, max_distance=max_distance)

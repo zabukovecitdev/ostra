@@ -10,8 +10,8 @@ from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.models.vector import Vector
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.sources.file_system_source import FileSystemSource
-from ostra.repositories.chunk_store import ChunkStore
-from ostra.repositories.model_index import ModelIndex
+from ostra.repositories.sqlite.sqlite_chunk_store import SqliteChunkStore
+from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
 from ostra.services.ingestion_pipeline import IngestionPipeline
 from ostra.services.ingestion_runner import run_ingestion
 from ostra.services.text_chunker import TextChunker
@@ -21,7 +21,7 @@ DATA_DIRECTORY = Path(__file__).parent / "data"
 
 
 @pytest.fixture
-def index(store: ChunkStore) -> ModelIndex:
+def index(store: SqliteChunkStore) -> SqliteModelIndex:
     """Provide the index of the mxbai model, because the fake provider returns 1024 values."""
     return store.model_index(MXBAI_EMBED_LARGE, create=True)
 
@@ -58,7 +58,7 @@ class FolderIngestion:
 
 
 def make_service(
-    index: ModelIndex,
+    index: SqliteModelIndex,
     directory: Path,
     reindex: bool = False,
     chunk_size_tokens: int = 510,
@@ -80,7 +80,7 @@ def make_service(
     return FolderIngestion(directory, pipeline, provider)
 
 
-def stored_chunks(index: ModelIndex, file_path: Path) -> set[str]:
+def stored_chunks(index: SqliteModelIndex, file_path: Path) -> set[str]:
     """Return the stored chunk digests of one file."""
     return index.stored_digests(str(file_path))
 

@@ -6,7 +6,6 @@ import pytest
 from platformdirs import user_data_path
 
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS, DEFAULT_DATABASE_PATH
-from ostra.enums.database_backend import DatabaseBackend
 from ostra.models.app_config import AppConfig
 from ostra.repositories.config_repository import DEFAULT_CONFIG_PATH, default_config_path, load_config, save_config
 
@@ -28,7 +27,6 @@ def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp
     assert json.loads(config_path.read_text()) == {
         "database_path": str(DEFAULT_DATABASE_PATH),
         "directories": [],
-        "database_backend": "sqlite",
         "chunk_overlap_tokens": 50,
         "embedding_provider": "ollama",
         "embedding_model": "mxbai-embed-large",
@@ -180,31 +178,6 @@ def test_load_config__chunk_size_not_an_integer__raises_value_error(tmp_path: Pa
         load_config(config_path)
 
 
-def test_load_config__backend_key_missing__returns_sqlite_backend(tmp_path: Path):
-    """Return the SQLite backend when the config file has no database_backend key."""
-    config_path = tmp_path / "config.json"
-    config_path.write_text("{}")
-
-    assert load_config(config_path).database_backend is DatabaseBackend.SQLITE
-
-
-def test_load_config__backend_set_to_chroma__returns_chroma_backend(tmp_path: Path):
-    """Return the Chroma backend that the config file sets."""
-    config_path = tmp_path / "config.json"
-    config_path.write_text('{"database_backend": "chroma"}')
-
-    assert load_config(config_path).database_backend is DatabaseBackend.CHROMA
-
-
-def test_load_config__backend_not_supported__raises_value_error(tmp_path: Path):
-    """Raise ValueError when the config file names a backend that is not supported."""
-    config_path = tmp_path / "config.json"
-    config_path.write_text('{"database_backend": "postgres"}')
-
-    with pytest.raises(ValueError, match=r"database_backend\n.*'sqlite' or 'chroma'"):
-        load_config(config_path)
-
-
 def test_save_config__settings_saved__load_config_returns_same_settings(tmp_path: Path):
     """Read back the settings that were written."""
     config_path = tmp_path / "config.json"
@@ -282,13 +255,11 @@ def test_load_config__old_file_with_chunk_size_510__keeps_the_value(tmp_path: Pa
 def test_load_config__environment_variable_set__overrides_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Let an OSTRA_ environment variable override the key of the same name in the config file."""
     config_path = tmp_path / "config.json"
-    config_path.write_text('{"database_backend": "sqlite", "chunk_overlap_tokens": 20}')
-    monkeypatch.setenv("OSTRA_DATABASE_BACKEND", "chroma")
+    config_path.write_text('{"chunk_size_tokens": 300, "chunk_overlap_tokens": 20}')
     monkeypatch.setenv("OSTRA_CHUNK_SIZE_TOKENS", "800")
 
     config = load_config(config_path)
 
-    assert config.database_backend is DatabaseBackend.CHROMA
     assert config.chunk_size_tokens == 800
     assert config.chunk_overlap_tokens == 20
 
@@ -304,25 +275,12 @@ def test_load_config__directories_environment_variable__reads_json_list(
     assert load_config(config_path).directories == [Path.home() / "notes", Path("/data")]
 
 
-def test_load_config__config_file_missing_and_environment_set__writes_only_defaults_to_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """Keep environment overrides out of the new config file, but apply them to the returned settings."""
-    config_path = tmp_path / "config.json"
-    monkeypatch.setenv("OSTRA_DATABASE_BACKEND", "chroma")
-
-    config = load_config(config_path)
-
-    assert config.database_backend is DatabaseBackend.CHROMA
-    assert json.loads(config_path.read_text())["database_backend"] == "sqlite"
-
-
 def test_load_config__unknown_key__is_ignored(tmp_path: Path):
     """Ignore keys that the settings do not know, so that an older or newer config file still loads."""
     config_path = tmp_path / "config.json"
     config_path.write_text('{"removed_setting": 1}')
 
-    assert load_config(config_path).database_backend is DatabaseBackend.SQLITE
+    assert load_config(config_path).embedding_model == "mxbai-embed-large"
 
 
 def test_load_config__file_is_not_an_object__raises_value_error(tmp_path: Path):

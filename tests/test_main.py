@@ -6,12 +6,12 @@ import pytest
 
 from ostra.cli import main
 from ostra.constants import NO_DIRECTORIES_MESSAGE
-from ostra.enums.database_backend import DatabaseBackend
 from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
 from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.tokenizers.tokenizer import Tokenizer
+from ostra.services import index_session
 
 
 class FakeTokenizer(Tokenizer):
@@ -40,19 +40,19 @@ def make_fake_model() -> EmbeddingModel:
 @pytest.fixture(autouse=True)
 def fake_embedding_model(monkeypatch: pytest.MonkeyPatch):
     """Replace the embedding model that main creates with the fake model for every test."""
-    monkeypatch.setattr(main, "build_embedding_model", lambda config, model_id=None: make_fake_model())
+    monkeypatch.setattr(index_session, "build_embedding_model", lambda config, model_id=None: make_fake_model())
 
 
-def test_main__database_ready__prints_backend_name(
+def test_main__database_ready__prints_message(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ):
-    """Print the database path from the config after the database is ready."""
+    """Print that the database is ready and create the database file."""
     database_path = tmp_path / "ostra.db"
     monkeypatch.setattr(main, "load_config", lambda: AppConfig(database_path=database_path, directories=[]))
 
     main.main(["index"])
 
-    assert capsys.readouterr().out == f"Database ready. Backend=sqlite\n{NO_DIRECTORIES_MESSAGE}\n"
+    assert capsys.readouterr().out == f"Database ready.\n{NO_DIRECTORIES_MESSAGE}\n"
     assert database_path.is_file()
 
 
@@ -110,46 +110,6 @@ def test_main__search_flag_without_limit__uses_default_limit():
     assert (arguments.query, arguments.limit) == ("alpha", 5)
 
 
-def test_main__database_flag_chroma__creates_chroma_store_beside_database(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-):
-    """Use the Chroma backend and create its store when the database flag names chroma."""
-    monkeypatch.setattr(main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[]))
-
-    main.main(["index", "--database", "chroma"])
-
-    assert capsys.readouterr().out == f"Database ready. Backend=chroma\n{NO_DIRECTORIES_MESSAGE}\n"
-    assert (tmp_path / "chroma").is_dir()
-    assert not (tmp_path / "ostra.db").exists()
-
-
-def test_main__config_selects_chroma__uses_chroma_backend(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
-):
-    """Use the backend from the config file when no database flag is given."""
-    monkeypatch.setattr(
-        main,
-        "load_config",
-        lambda: AppConfig(
-            database_path=tmp_path / "ostra.db",
-            directories=[],
-            database_backend=DatabaseBackend.CHROMA,
-        ),
-    )
-
-    main.main(["index"])
-
-    assert capsys.readouterr().out == f"Database ready. Backend=chroma\n{NO_DIRECTORIES_MESSAGE}\n"
-
-
-def test_main__database_flag_unknown__exits_with_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """Exit with an error when the database flag names an unsupported backend."""
-    monkeypatch.setattr(main, "load_config", lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[]))
-
-    with pytest.raises(SystemExit):
-        main.main(["index", "--database", "postgres"])
-
-
 def test_main__directory_flag__processes_given_folder_instead_of_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
@@ -189,13 +149,6 @@ def test_main__no_command__prints_help_and_does_not_load_config(
     main.main([])
 
     assert "COMMAND" in capsys.readouterr().out
-
-
-def test_main__database_option_after_command__selects_backend():
-    """Accept the database option after the command name, as well as before it."""
-    arguments = main._build_parser().parse_args(["search", "alpha", "--database", "chroma"])
-
-    assert arguments.database is DatabaseBackend.CHROMA
 
 
 def _index_text(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, text: str) -> Path:

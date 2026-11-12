@@ -8,31 +8,15 @@ from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
 from ostra.providers.sources.document_source import DocumentSource
 from ostra.providers.sources.file_system_source import FileSystemSource
-from ostra.repositories.model_index import ModelIndex
+from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
 from ostra.services.ingestion_pipeline import IngestionPipeline
 from ostra.services.ingestion_runner import run_ingestion
 from ostra.services.text_chunker import TextChunker
 
 
-def build_sources(
-    config: AppConfig, directories: list[Path] | None = None, recursive: bool = False
-) -> list[DocumentSource]:
-    """Build the sources that the settings name.
-
-    Args:
-        config: The application settings.
-        directories: Folders to index. Use the configured folders when None.
-        recursive: Index the files in the subfolders of the folders too.
-
-    Returns:
-        The sources. There is one file system source now.
-    """
-    return [FileSystemSource(directories=directories or config.directories, recursive=recursive)]
-
-
 def build_pipeline(
     config: AppConfig,
-    model_index: ModelIndex,
+    model_index: SqliteModelIndex,
     embedding_model: EmbeddingModel,
     reindex: bool = False,
     on_document_processed: Callable[[str], None] | None = None,
@@ -67,7 +51,7 @@ def build_pipeline(
 
 def run_indexing(
     config: AppConfig,
-    model_index: ModelIndex,
+    model_index: SqliteModelIndex,
     embedding_model: EmbeddingModel,
     directories: list[Path] | None = None,
     reindex: bool = False,
@@ -87,7 +71,9 @@ def run_indexing(
         recursive: Index the files in the subfolders of the folders too.
         show_progress: Show a progress bar on the terminal, with the count of documents and the current document.
     """
-    sources = build_sources(config, directories, recursive)
+    sources: list[DocumentSource] = [
+        FileSystemSource(directories=directories or config.directories, recursive=recursive)
+    ]
     progress = _start_progress(sources) if show_progress else None
     pipeline = build_pipeline(
         config=config,

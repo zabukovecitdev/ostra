@@ -7,7 +7,7 @@ requires-python = ">=3.14"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Rok Zabukovec" }]
-keywords = ["rag", "embeddings", "vector-search", "sqlite-vec", "chroma", "ollama", "semantic-search"]
+keywords = ["rag", "embeddings", "vector-search", "sqlite-vec", "ollama", "semantic-search"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -28,9 +28,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-chroma = [
-    "chromadb>=1.5.9",
-]
 gui = [
     "nicegui>=3",
 ]
@@ -46,7 +43,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "chromadb>=1.5.9",
+    "complexipy>=8.3.0",
     "mutmut>=3.8.1",
     "mypy>=2.4.1",
     "pre-commit>=4.7.0",
@@ -61,7 +58,14 @@ target-version = "py314"
 extend-exclude = ["mutants"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP"]
+select = ["E", "F", "W", "I", "B", "UP", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.complexipy]
+paths = ["src"]
+max-complexity-allowed = 15
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

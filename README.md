@@ -46,7 +46,7 @@ Everything runs on your machine. No text leaves it.
 - **Local embeddings** through [Ollama](https://ollama.com), with `mxbai-embed-large` (default) or `bge-m3` for multilingual text.
 - **One index for each model.** Vectors of two models never mix, so you can compare models on the same files.
 - **Vector search** with cosine distance, from the command line, as JSON, or in a local web interface.
-- **Two storage backends behind one interface:** SQLite with `sqlite-vec` (default) and Chroma. Switch with a flag or a config key.
+- **SQLite storage with `sqlite-vec`.** One database holds an index for each embedding model, with versioned migrations.
 - **Retrieval evaluation** with hit rate, recall and MRR, to measure each change to chunking, models or search.
 - **Background indexing** as a systemd user service.
 - **Owner-only file permissions** on the database, the config file and their folders. Linux and macOS apply these modes. On Windows they have no effect.
@@ -56,7 +56,7 @@ Everything runs on your machine. No text leaves it.
 ```
  ┌──────────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────┐
  │ Text files   │───►│ Chunker  │───►│  Ollama   │───►│ Vector store │
- │ .txt .md .csv│    │ (tokens) │    │ embedding │    │ SQLite/Chroma│
+ │ .txt .md .csv│    │ (tokens) │    │ embedding │    │    SQLite    │
  └──────────────┘    └──────────┘    └───────────┘    └──────┬───────┘
                                                              │
  ┌──────────────┐    ┌──────────┐    ┌───────────┐           │
@@ -93,7 +93,6 @@ Install the command line tools and the web interface from GitHub:
 uv tool install 'ostra[gui] @ git+https://github.com/zabukovecitdev/ostra'
 ```
 
-Add the `chroma` extra for the Chroma backend: `'ostra[gui,chroma] @ git+...'`.
 
 For development, clone the repository instead:
 
@@ -118,8 +117,7 @@ The config file is `config.json` in your user config folder, for example `~/.con
 
 | Key | Default | Meaning |
 |---|---|---|
-| `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. The Chroma store is a `chroma` folder beside it. |
-| `database_backend` | `sqlite` | `sqlite` or `chroma`. Chroma needs the `chroma` extra. |
+| `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. |
 | `directories` | none | Folders to process. Add at least one before the first run. Only top-level `.txt`, `.md` and `.csv` files are read. |
 | `chunk_size_tokens` | not set | Tokens per chunk. When not set, the default of the embedding model applies (510 for mxbai-embed-large). The value must fit the model input after its special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
@@ -140,7 +138,6 @@ The Ollama server address comes from the `OLLAMA_BASE_URL` environment variable 
 | `ostra search "query" --max-distance 0.4` | Hide chunks whose cosine distance is above 0.4 (0 is the same direction, 2 is opposite) |
 | `ostra search "query" --full` | Print the whole text of each chunk |
 | `ostra search "query" --json` | Print the chunks as a JSON list with the full text |
-| `ostra --database chroma index` | Use the Chroma backend for this run. The option also works after the command name. |
 
 Run `ostra --help` or `ostra index --help` for the full list of options.
 
@@ -167,7 +164,7 @@ The SQLite database uses write-ahead logging, so `ostra search` works while the 
 
 ## Desktop interface
 
-A local web interface has a search page and a config page. The config page edits the folders, database path, backend and chunk sizes. It also shows the result of the last background run. The **Index now** button starts one indexing run at once with the saved settings, and it shows the result when the run ends.
+A local web interface has a search page and a config page. The config page edits the folders, database path and chunk sizes. It also shows the result of the last background run. The **Index now** button starts one indexing run at once with the saved settings, and it shows the result when the run ends.
 
 ```bash
 ostra-app                     # opens http://127.0.0.1:8765
@@ -208,9 +205,8 @@ src/ostra/
 │   ├── sources/           DocumentSource (abstract) and the file system source
 │   ├── embeddings/        EmbeddingProvider (abstract, applies query and document prefixes) and the Ollama provider
 │   └── tokenizers/        Tokenizer (abstract) and the tokenizer-file implementation
-├── repositories/          storage: ChunkStore and ModelIndex (abstract), one index for each embedding model
-│   ├── sqlite/            SQLite + sqlite-vec, versioned migrations
-│   └── chroma/            Chroma persistent client
+├── repositories/          storage: SqliteChunkStore with one SqliteModelIndex for each embedding model
+│   └── sqlite/            SQLite + sqlite-vec, versioned migrations, one index for each model
 ├── models/                data types, model registry (one spec for each model), EmbeddingModel bundle
 ├── evaluation/            test set loading and retrieval metrics
 └── enums/, errors/, utils/, constants.py
@@ -218,7 +214,7 @@ src/ostra/
 
 A source reads documents in its own thread and puts them in a bounded queue. The pipeline takes them from the queue, and it does not know where they come from. A new source, such as notes or email, is one new `DocumentSource` class. The document ID is the key of the stored chunks. The file system source uses the file path.
 
-The layers depend on abstract classes, so a new embedding model or storage backend means one new class and a change in one place. A new model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
+The layers depend on abstract classes. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
 
 More design notes are in [docs/design](docs/design).
 
@@ -238,7 +234,7 @@ make check            # lint, format check, type check and tests
 | `make typecheck` | Check the types with mypy |
 | `make check` | Run all of the checks above |
 
-The suite runs 266 tests. The storage contract tests and the ingestion tests run once for each backend. The tests do not call Ollama: they use a fake embedding model and a local tokenizer file.
+The suite runs 219 tests. The tests do not call Ollama: they use a fake embedding model and a local tokenizer file.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
 
@@ -250,8 +246,8 @@ Measured on the development machine with a local Ollama server:
 |---|---|
 | Embedding one full-size chunk (510 tokens) | median 115 ms |
 | Embedding and storing 1 MB of text (408 chunks) | 48 s |
-| Reindex of a 440 KB novel (243 chunks), SQLite / Chroma | 28 s / 31 s |
-| Search, SQLite / Chroma | 1.4 ms / 2.9 ms (query embedding adds about 25 ms) |
+| Reindex of a 440 KB novel (243 chunks) | 28 s |
+| Search | 1.4 ms (query embedding adds about 25 ms) |
 
 More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
 

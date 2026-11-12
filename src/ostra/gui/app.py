@@ -2,7 +2,6 @@ from pathlib import Path
 
 from nicegui import run, ui
 
-from ostra.enums.database_backend import DatabaseBackend
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.enums.ollama_state import OllamaState
 from ostra.gui.folder_picker import FolderPicker
@@ -259,7 +258,6 @@ def config_page() -> None:
                 update={
                     "database_path": Path(database_path_input.value).expanduser(),
                     "directories": directories,
-                    "database_backend": DatabaseBackend(backend_input.value),
                     "embedding_model": model_input.value,
                     "chunk_size_tokens": None
                     if chunk_size == get_model_spec(model_input.value).default_chunk_size_tokens
@@ -297,9 +295,6 @@ def config_page() -> None:
         database_path_input = (
             ui.input("Database path", value=str(config.database_path)).classes("w-full").props(FIELD_PROPS)
         )
-        backend_input = ui.select(
-            [backend.value for backend in DatabaseBackend], value=config.database_backend.value, label="Backend"
-        ).props(FIELD_PROPS)
         chunk_size_input = ui.number(
             "Chunk size (tokens)",
             value=config.chunk_size_tokens or get_model_spec(config.embedding_model).default_chunk_size_tokens,

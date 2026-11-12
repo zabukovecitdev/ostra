@@ -6,9 +6,8 @@ from pathlib import Path
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.repositories.config_repository import load_config
-from ostra.repositories.open_chunk_store import open_chunk_store
 from ostra.repositories.status_repository import STATUS_PATH, write_status
-from ostra.services.embedding_model_factory import build_embedding_model
+from ostra.services.index_session import open_index
 from ostra.services.indexing_service import run_indexing
 
 logger = logging.getLogger(__name__)
@@ -69,11 +68,10 @@ def _index_directories(config: AppConfig, processed_files: list[str]) -> None:
         config: The application settings.
         processed_files: List that receives the ID of each processed document.
     """
-    embedding_model = build_embedding_model(config)
-    with open_chunk_store(config.database_backend, config.database_path) as store:
+    with open_index(config, create=True) as session:
         run_indexing(
             config=config,
-            model_index=store.model_index(embedding_model.spec, create=True),
-            embedding_model=embedding_model,
+            model_index=session.model_index,
+            embedding_model=session.embedding_model,
             on_document_processed=processed_files.append,
         )

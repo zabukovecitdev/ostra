@@ -5,15 +5,13 @@ from pathlib import Path
 
 from ostra.cli import configure_logging
 from ostra.constants import NO_DIRECTORIES_MESSAGE
-from ostra.enums.database_backend import DatabaseBackend
 from ostra.evaluation.evaluation_cases import load_evaluation_cases
 from ostra.evaluation.retrieval_evaluator import RetrievalEvaluator
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS
 from ostra.repositories.config_repository import load_config
-from ostra.repositories.model_index import ModelIndex
-from ostra.repositories.open_chunk_store import open_chunk_store
+from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
 from ostra.services.chunk_search_service import ChunkSearchService
-from ostra.services.embedding_model_factory import build_embedding_model
+from ostra.services.index_session import open_index
 from ostra.services.indexing_service import run_indexing
 
 DEFAULT_SEARCH_LIMIT = 5
@@ -34,10 +32,7 @@ def main(argv: list[str] | None = None):
         return
 
     config = load_config()
-    backend = arguments.database or config.database_backend
-    embedding_model = build_embedding_model(config, model_id=arguments.model)
-    spec = embedding_model.spec
-    with open_chunk_store(backend, config.database_path) as store:
+    with open_index(config, model_id=arguments.model, create=arguments.command == "index") as session:
         if arguments.command == "eval":
             _print_evaluation(
                 cases_path=arguments.cases,
@@ -45,8 +40,8 @@ def main(argv: list[str] | None = None):
                 query_prefix=arguments.query_prefix,
                 as_json=arguments.json,
                 search_service=ChunkSearchService(
-                    embedding_provider=embedding_model.provider,
-                    model_index=store.model_index(spec, create=False),
+                    embedding_provider=session.embedding_model.provider,
+                    model_index=session.model_index,
                 ),
             )
         elif arguments.command == "search":
@@ -56,20 +51,20 @@ def main(argv: list[str] | None = None):
                 max_distance=arguments.max_distance,
                 full_text=arguments.full,
                 as_json=arguments.json,
-                embedding_provider=embedding_model.provider,
-                model_index=store.model_index(spec, create=False),
+                embedding_provider=session.embedding_model.provider,
+                model_index=session.model_index,
             )
         else:
-            print(f"Database ready. Backend={backend.value}")
+            print("Database ready.")
             _index_files(
                 arguments=arguments,
                 config=config,
-                model_index=store.model_index(spec, create=True),
-                embedding_model=embedding_model,
+                model_index=session.model_index,
+                embedding_model=session.embedding_model,
             )
 
 
-def _index_files(arguments, config, model_index: ModelIndex, embedding_model) -> None:
+def _index_files(arguments, config, model_index: SqliteModelIndex, embedding_model) -> None:
     """Embed and store the new or changed chunks of the folders.
 
     Args:
@@ -236,12 +231,6 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Index text files into a local vector database and search them.",
     )
     shared = argparse.ArgumentParser(add_help=False)
-    shared.add_argument(
-        "--database",
-        type=DatabaseBackend,
-        choices=list(DatabaseBackend),
-        help="Database backend to use. Overrides database_backend in the config file.",
-    )
     shared.add_argument(
         "--model",
         choices=list(EMBEDDING_MODELS),

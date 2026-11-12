@@ -15,7 +15,7 @@ EXTRAS ?= gui
 help: ## Show the available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
 
-install: ## Install the ostra commands for your user with EXTRAS (default gui), e.g. make install EXTRAS=gui,chroma
+install: ## Install the ostra commands for your user with EXTRAS (default gui), e.g. make install EXTRAS=gui
 	uv tool install --editable --reinstall '.$(if $(EXTRAS),[$(EXTRAS)])'
 
 uninstall: ## Remove the installed ostra commands

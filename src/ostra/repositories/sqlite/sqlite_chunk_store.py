@@ -3,6 +3,7 @@ import os
 import re
 import sqlite3
 from pathlib import Path
+from types import TracebackType
 from typing import Self
 
 import sqlite_vec
@@ -11,8 +12,6 @@ from ostra.constants import OWNER_ONLY_DIRECTORY_MODE, OWNER_ONLY_FILE_MODE
 from ostra.errors.model_index_mismatch_error import ModelIndexMismatchError
 from ostra.errors.model_not_indexed_error import ModelNotIndexedError
 from ostra.models.embedding_model_spec import EmbeddingModelSpec
-from ostra.repositories.chunk_store import ChunkStore
-from ostra.repositories.model_index import ModelIndex
 from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
 
 logger = logging.getLogger(__name__)
@@ -30,7 +29,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 """
 
 
-class SqliteChunkStore(ChunkStore):
+class SqliteChunkStore:
     """Keep the chunks of each embedding model in a local SQLite database with the sqlite-vec extension."""
 
     def __init__(self, path: Path):
@@ -102,6 +101,17 @@ class SqliteChunkStore(ChunkStore):
         self._connection.close()
         self._connection = None
 
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
     def migrate(self) -> None:
         """Apply each SQLite migration that has not run yet.
 
@@ -127,7 +137,7 @@ class SqliteChunkStore(ChunkStore):
         finally:
             self.close()
 
-    def model_index(self, spec: EmbeddingModelSpec, create: bool) -> ModelIndex:
+    def model_index(self, spec: EmbeddingModelSpec, create: bool) -> SqliteModelIndex:
         """Return the index of an embedding model, and create it first when asked.
 
         A new index gets its own chunk table and its own vector table, sized for the model. Only a call with

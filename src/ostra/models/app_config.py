@@ -4,7 +4,6 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS, DEFAULT_DATABASE_PATH
-from ostra.enums.database_backend import DatabaseBackend
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.embedding_model_registry import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS
 
@@ -13,8 +12,8 @@ class AppConfig(BaseSettings):
     """Hold the application settings.
 
     Each setting comes from the first of these that sets it: a keyword argument, an environment variable with
-    the OSTRA_ prefix, the config file, the default value. For example OSTRA_DATABASE_BACKEND=chroma selects
-    Chroma for one run. A list setting such as OSTRA_DIRECTORIES takes a JSON list. Paths accept a leading ~
+    the OSTRA_ prefix, the config file, the default value. For example OSTRA_EMBEDDING_MODEL=bge-m3 selects
+    that model for one run. A list setting such as OSTRA_DIRECTORIES takes a JSON list. Paths accept a leading ~
     for the home directory.
     """
 
@@ -22,7 +21,6 @@ class AppConfig(BaseSettings):
 
     database_path: Path = DEFAULT_DATABASE_PATH
     directories: list[Path] = Field(default_factory=list)
-    database_backend: DatabaseBackend = DatabaseBackend.SQLITE
     # None means the default chunk size of the embedding model.
     chunk_size_tokens: int | None = None
     chunk_overlap_tokens: int = DEFAULT_CHUNK_OVERLAP_TOKENS

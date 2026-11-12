@@ -3,11 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from ostra.enums.database_backend import DatabaseBackend
 from ostra.models.embedding_model_spec import EmbeddingModelSpec
-from ostra.repositories.chunk_store import ChunkStore
-from ostra.repositories.model_index import ModelIndex
-from ostra.repositories.open_chunk_store import open_chunk_store
+from ostra.repositories.sqlite.sqlite_chunk_store import SqliteChunkStore
+from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
 
 
 def make_spec(model_id: str, dimensions: int, **overrides) -> EmbeddingModelSpec:
@@ -27,26 +25,20 @@ def make_spec(model_id: str, dimensions: int, **overrides) -> EmbeddingModelSpec
 TEST_SPEC = make_spec("test-model", 4)
 
 
-@pytest.fixture(params=[DatabaseBackend.SQLITE, DatabaseBackend.CHROMA])
-def backend(request: pytest.FixtureRequest) -> DatabaseBackend:
-    """Provide each database backend in turn."""
-    return request.param
-
-
 @pytest.fixture
 def database_path(tmp_path: Path) -> Path:
-    """Provide the location of the SQLite database file for a test. The Chroma store is beside it."""
+    """Provide the location of the SQLite database file for a test."""
     return tmp_path / "ostra.db"
 
 
 @pytest.fixture
-def store(backend: DatabaseBackend, database_path: Path) -> Iterator[ChunkStore]:
-    """Provide an open store for each backend and close it after the test."""
-    with open_chunk_store(backend, database_path) as opened:
+def store(database_path: Path) -> Iterator[SqliteChunkStore]:
+    """Provide an open store and close it after the test."""
+    with SqliteChunkStore.open(database_path) as opened:
         yield opened
 
 
 @pytest.fixture
-def index(store: ChunkStore) -> ModelIndex:
+def index(store: SqliteChunkStore) -> SqliteModelIndex:
     """Provide the index of the small test model."""
     return store.model_index(TEST_SPEC, create=True)

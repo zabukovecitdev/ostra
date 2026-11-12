@@ -3,18 +3,15 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from chromadb.api.shared_system_client import SharedSystemClient
 from conftest import TEST_SPEC, make_spec
 
-from ostra.enums.database_backend import DatabaseBackend
 from ostra.errors.model_index_mismatch_error import ModelIndexMismatchError
 from ostra.errors.model_not_indexed_error import ModelNotIndexedError
 from ostra.models.document_record import DocumentRecord
 from ostra.models.embedded_chunk import EmbeddedChunk
 from ostra.models.vector import Vector
-from ostra.repositories.chunk_store import ChunkStore
-from ostra.repositories.model_index import ModelIndex
-from ostra.repositories.open_chunk_store import open_chunk_store
+from ostra.repositories.sqlite.sqlite_chunk_store import SqliteChunkStore
+from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
 
 OTHER_SPEC = make_spec("other-model", 3)
 
@@ -34,7 +31,9 @@ def chunk(digest: str, text: str = "chunk text", position: int = 0) -> EmbeddedC
     return EmbeddedChunk(digest=digest, text=text, embedding=one_hot(position))
 
 
-def save(index: ModelIndex, chunks: Iterable[EmbeddedChunk], doc: DocumentRecord | None = None, keep=None) -> None:
+def save(
+    index: SqliteModelIndex, chunks: Iterable[EmbeddedChunk], doc: DocumentRecord | None = None, keep=None
+) -> None:
     """Save the chunks of a document. Keep the digests of the given chunks, or of all saved chunks."""
     chunks = list(chunks)
     index.save_document(
@@ -42,19 +41,19 @@ def save(index: ModelIndex, chunks: Iterable[EmbeddedChunk], doc: DocumentRecord
     )
 
 
-def test_stored_digests__unknown_document__returns_empty_set(index: ModelIndex):
+def test_stored_digests__unknown_document__returns_empty_set(index: SqliteModelIndex):
     """Return an empty set for a document without saved chunks."""
     assert index.stored_digests("/notes/a.txt") == set()
 
 
-def test_save_document__two_chunks__returns_both_digests(index: ModelIndex):
+def test_save_document__two_chunks__returns_both_digests(index: SqliteModelIndex):
     """Return every chunk digest that was saved for the document."""
     save(index, [chunk("chunk-1"), chunk("chunk-2", position=1)])
 
     assert index.stored_digests("/notes/a.txt") == {"chunk-1", "chunk-2"}
 
 
-def test_save_document__same_digest_twice__stores_one_chunk(index: ModelIndex):
+def test_save_document__same_digest_twice__stores_one_chunk(index: SqliteModelIndex):
     """Store a repeated chunk digest only once for the document."""
     save(index, [chunk("chunk-1")])
     save(index, [chunk("chunk-1")])
@@ -62,7 +61,7 @@ def test_save_document__same_digest_twice__stores_one_chunk(index: ModelIndex):
     assert index.stored_digests("/notes/a.txt") == {"chunk-1"}
 
 
-def test_stored_digests__other_document__not_returned(index: ModelIndex):
+def test_stored_digests__other_document__not_returned(index: SqliteModelIndex):
     """Return only the chunk digests of the requested document."""
     save(index, [chunk("chunk-1")])
     save(index, [chunk("chunk-2", position=1)], document("/notes/b.txt", title="b.txt"))
@@ -71,7 +70,7 @@ def test_stored_digests__other_document__not_returned(index: ModelIndex):
 
 
 @pytest.mark.parametrize("digest", ["chunk-1", "chunk-2"])
-def test_save_document__same_digest_in_two_documents__keeps_documents_apart(index: ModelIndex, digest: str):
+def test_save_document__same_digest_in_two_documents__keeps_documents_apart(index: SqliteModelIndex, digest: str):
     """Keep the chunks of different documents apart even when the digest is the same."""
     save(index, [chunk(digest)])
     save(index, [chunk(digest)], document("/notes/b.txt", title="b.txt"))
@@ -80,7 +79,7 @@ def test_save_document__same_digest_in_two_documents__keeps_documents_apart(inde
     assert index.stored_digests("/notes/b.txt") == {digest}
 
 
-def test_save_document__digest_not_current__deletes_the_chunk(index: ModelIndex):
+def test_save_document__digest_not_current__deletes_the_chunk(index: SqliteModelIndex):
     """Delete a stored chunk whose digest the document no longer has, and keep the others."""
     save(index, [chunk("chunk-1"), chunk("chunk-2", position=1)])
 
@@ -89,7 +88,7 @@ def test_save_document__digest_not_current__deletes_the_chunk(index: ModelIndex)
     assert index.stored_digests("/notes/a.txt") == {"chunk-2"}
 
 
-def test_save_document__no_new_chunks_all_current__keeps_chunks(index: ModelIndex):
+def test_save_document__no_new_chunks_all_current__keeps_chunks(index: SqliteModelIndex):
     """Keep every chunk when all digests are current and nothing is new."""
     save(index, [chunk("chunk-1")])
 
@@ -98,7 +97,7 @@ def test_save_document__no_new_chunks_all_current__keeps_chunks(index: ModelInde
     assert index.stored_digests("/notes/a.txt") == {"chunk-1"}
 
 
-def test_save_document__other_documents_chunks__not_deleted(index: ModelIndex):
+def test_save_document__other_documents_chunks__not_deleted(index: SqliteModelIndex):
     """Delete stale chunks of the saved document only."""
     save(index, [chunk("chunk-1")], document("/notes/b.txt", title="b.txt"))
 
@@ -107,7 +106,7 @@ def test_save_document__other_documents_chunks__not_deleted(index: ModelIndex):
     assert index.stored_digests("/notes/b.txt") == {"chunk-1"}
 
 
-def test_save_document__chunks_given_lazily__saves_each_chunk_when_it_is_produced(index: ModelIndex):
+def test_save_document__chunks_given_lazily__saves_each_chunk_when_it_is_produced(index: SqliteModelIndex):
     """Keep the chunks that were saved before an error, so that an interrupted run can continue."""
 
     def chunks():
@@ -120,7 +119,7 @@ def test_save_document__chunks_given_lazily__saves_each_chunk_when_it_is_produce
     assert index.stored_digests("/notes/a.txt") == {"chunk-1"}
 
 
-def test_search__query_matches_one_chunk__returns_nearest_first_with_document_details(index: ModelIndex):
+def test_search__query_matches_one_chunk__returns_nearest_first_with_document_details(index: SqliteModelIndex):
     """Return the chunk with the same direction first, with its text, document details and a distance of 0."""
     save(index, [chunk("chunk-1", "first text", 1), chunk("chunk-2", "second text", 2)], document(title="Notes A"))
 
@@ -134,19 +133,19 @@ def test_search__query_matches_one_chunk__returns_nearest_first_with_document_de
     assert matches[1].distance == pytest.approx(1.0, abs=1e-6)
 
 
-def test_search__limit_reached__returns_only_limit_matches(index: ModelIndex):
+def test_search__limit_reached__returns_only_limit_matches(index: SqliteModelIndex):
     """Return no more matches than the limit."""
     save(index, [chunk("chunk-1", position=1), chunk("chunk-2", position=2)])
 
     assert [match.digest for match in index.search(query=one_hot(1), limit=1)] == ["chunk-1"]
 
 
-def test_search__no_chunks_stored__returns_empty_list(index: ModelIndex):
+def test_search__no_chunks_stored__returns_empty_list(index: SqliteModelIndex):
     """Return an empty list when no chunk is stored."""
     assert index.search(query=one_hot(1), limit=5) == []
 
 
-def test_search__chunk_deleted__is_not_returned(index: ModelIndex):
+def test_search__chunk_deleted__is_not_returned(index: SqliteModelIndex):
     """Stop returning a chunk after it is deleted, so its vector is removed too."""
     save(index, [chunk("chunk-1", position=1), chunk("chunk-2", position=2)])
 
@@ -155,7 +154,7 @@ def test_search__chunk_deleted__is_not_returned(index: ModelIndex):
     assert [match.digest for match in index.search(query=one_hot(1), limit=5)] == ["chunk-2"]
 
 
-def test_save_document__digest_saved_again__replaces_text_and_vector(index: ModelIndex):
+def test_save_document__digest_saved_again__replaces_text_and_vector(index: SqliteModelIndex):
     """Replace the text and the vector of a stored chunk when the same digest is saved again."""
     save(index, [chunk("chunk-1", "old text", 1)])
 
@@ -165,7 +164,7 @@ def test_save_document__digest_saved_again__replaces_text_and_vector(index: Mode
     assert [(m.text, m.distance) for m in matches] == [("new text", pytest.approx(0.0, abs=1e-6))]
 
 
-def test_save_document__title_changed__search_returns_new_title(index: ModelIndex):
+def test_save_document__title_changed__search_returns_new_title(index: SqliteModelIndex):
     """Return the latest title of a document."""
     save(index, [chunk("chunk-1", position=1)], document(title="Old"))
 
@@ -174,7 +173,7 @@ def test_save_document__title_changed__search_returns_new_title(index: ModelInde
     assert index.search(query=one_hot(1), limit=1)[0].title == "New"
 
 
-def test_model_index__two_models__keep_vectors_and_digests_apart(store: ChunkStore):
+def test_model_index__two_models__keep_vectors_and_digests_apart(store: SqliteChunkStore):
     """Give each model its own chunks, so that vectors of one model never appear in the other model."""
     first = store.model_index(TEST_SPEC, create=True)
     second = store.model_index(OTHER_SPEC, create=True)
@@ -192,7 +191,7 @@ def test_model_index__two_models__keep_vectors_and_digests_apart(store: ChunkSto
     assert [m.text for m in second.search(one_hot(1, size=3, model_id=OTHER_SPEC.model_id), limit=5)] == ["from second"]
 
 
-def test_model_index__same_digest_in_two_models__does_not_overwrite_the_other_model(store: ChunkStore):
+def test_model_index__same_digest_in_two_models__does_not_overwrite_the_other_model(store: SqliteChunkStore):
     """Keep a chunk of one model when another model saves or deletes a chunk with the same digest."""
     first = store.model_index(TEST_SPEC, create=True)
     second = store.model_index(OTHER_SPEC, create=True)
@@ -206,7 +205,7 @@ def test_model_index__same_digest_in_two_models__does_not_overwrite_the_other_mo
     assert [m.text for m in first.search(one_hot(1), limit=5)] == ["first text"]
 
 
-def test_model_index__model_never_indexed__raises_error_that_lists_indexed_models(store: ChunkStore):
+def test_model_index__model_never_indexed__raises_error_that_lists_indexed_models(store: SqliteChunkStore):
     """Raise ModelNotIndexedError for a read of a model without an index, and name the models that have one."""
     save(store.model_index(TEST_SPEC, create=True), [chunk("chunk-1")])
 
@@ -214,7 +213,7 @@ def test_model_index__model_never_indexed__raises_error_that_lists_indexed_model
         store.model_index(OTHER_SPEC, create=False)
 
 
-def test_model_index__read_without_create__does_not_create_the_index(store: ChunkStore):
+def test_model_index__read_without_create__does_not_create_the_index(store: SqliteChunkStore):
     """Create no index on a read, so that a search never changes the schema."""
     with pytest.raises(ModelNotIndexedError):
         store.model_index(OTHER_SPEC, create=False)
@@ -223,7 +222,7 @@ def test_model_index__read_without_create__does_not_create_the_index(store: Chun
         store.model_index(OTHER_SPEC, create=False)
 
 
-def test_model_index__dimensions_changed__raises_mismatch_error(store: ChunkStore):
+def test_model_index__dimensions_changed__raises_mismatch_error(store: SqliteChunkStore):
     """Refuse an index that was built with other dimensions than the model has now."""
     store.model_index(TEST_SPEC, create=True)
     changed = replace(TEST_SPEC, dimensions=8)
@@ -232,7 +231,7 @@ def test_model_index__dimensions_changed__raises_mismatch_error(store: ChunkStor
         store.model_index(changed, create=True)
 
 
-def test_model_index__same_dimensions_but_other_model_settings__raises_mismatch_error(store: ChunkStore):
+def test_model_index__same_dimensions_but_other_model_settings__raises_mismatch_error(store: SqliteChunkStore):
     """Refuse an index when the Ollama model changed but the dimensions stayed the same."""
     store.model_index(TEST_SPEC, create=True)
     changed = replace(TEST_SPEC, ollama_model="newer:latest")
@@ -241,7 +240,7 @@ def test_model_index__same_dimensions_but_other_model_settings__raises_mismatch_
         store.model_index(changed, create=True)
 
 
-def test_model_index__document_prefix_changed__raises_mismatch_error(store: ChunkStore):
+def test_model_index__document_prefix_changed__raises_mismatch_error(store: SqliteChunkStore):
     """Refuse an index when the document prefix changed, because the stored vectors were made without it."""
     store.model_index(TEST_SPEC, create=True)
     changed = replace(TEST_SPEC, document_prefix="doc: ")
@@ -250,21 +249,18 @@ def test_model_index__document_prefix_changed__raises_mismatch_error(store: Chun
         store.model_index(changed, create=True)
 
 
-def test_save_then_reopen__data_persisted(backend: DatabaseBackend, database_path: Path, store: ChunkStore):
+def test_save_then_reopen__data_persisted(database_path: Path, store: SqliteChunkStore):
     """Read back the saved data from a new store that opens the same database."""
     save(store.model_index(TEST_SPEC, create=True), [chunk("chunk-1", "chunk text", 1)])
     store.close()
-    # Chroma keeps one shared system per path inside the process. Clear it so the reopened client reads the disk.
-    SharedSystemClient.clear_system_cache()
 
-    with open_chunk_store(backend, database_path) as reopened:
+    with SqliteChunkStore.open(database_path) as reopened:
         index = reopened.model_index(TEST_SPEC, create=False)
         assert index.stored_digests("/notes/a.txt") == {"chunk-1"}
         assert [m.text for m in index.search(one_hot(1), limit=1)] == ["chunk text"]
-    SharedSystemClient.clear_system_cache()
 
 
-def test_save_document__vector_of_other_model__raises_value_error(index: ModelIndex):
+def test_save_document__vector_of_other_model__raises_value_error(index: SqliteModelIndex):
     """Refuse a chunk whose vector comes from another model, even when the size fits."""
     foreign = EmbeddedChunk("chunk-1", "text", one_hot(1, model_id="other-model"))
 
@@ -274,7 +270,7 @@ def test_save_document__vector_of_other_model__raises_value_error(index: ModelIn
     assert index.stored_digests("/notes/a.txt") == set()
 
 
-def test_save_document__vector_with_wrong_size__raises_value_error(index: ModelIndex):
+def test_save_document__vector_with_wrong_size__raises_value_error(index: SqliteModelIndex):
     """Refuse a chunk whose vector has another size than the model."""
     wrong = EmbeddedChunk("chunk-1", "text", one_hot(1, size=3))
 
@@ -282,13 +278,13 @@ def test_save_document__vector_with_wrong_size__raises_value_error(index: ModelI
         index.save_document(document(), [wrong], current_digests={"chunk-1"})
 
 
-def test_search__query_vector_of_other_model__raises_value_error(index: ModelIndex):
+def test_search__query_vector_of_other_model__raises_value_error(index: SqliteModelIndex):
     """Refuse a query vector from another model, so that vectors of two models are never compared."""
     with pytest.raises(ValueError, match="does not fit the index"):
         index.search(one_hot(1, model_id="other-model"), limit=5)
 
 
-def test_model_index__query_prefix_changed__does_not_raise(store: ChunkStore):
+def test_model_index__query_prefix_changed__does_not_raise(store: SqliteChunkStore):
     """Accept a changed query prefix, because query vectors are made fresh for each search."""
     store.model_index(TEST_SPEC, create=True)
 
