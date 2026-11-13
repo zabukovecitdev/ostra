@@ -20,3 +20,7 @@ mutants/
 
 # Scratch home of make eval-sample
 .eval-sample/
+
+# IDE and local tool state
+.idea/
+.awb/
