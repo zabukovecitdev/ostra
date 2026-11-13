@@ -209,59 +209,19 @@ def config_page() -> None:
     config = load_config()
     folders = list(config.directories)
 
-    @ui.refreshable
-    def folder_list() -> None:
-        """Show each configured folder with a remove button."""
-        if not folders:
-            ui.label("No folders yet. Add a folder to start indexing.").classes("ostra-muted")
-        for folder in folders:
-            with ui.row().classes("w-full items-center no-wrap"):
-                ui.label(str(folder)).classes("grow ostra-text")
-                ui.button(icon="close", on_click=lambda folder=folder: remove_folder(folder)).props("flat round dense")
-
-    def remove_folder(folder: Path) -> None:
-        """Remove a folder from the list on the page. The change is saved with the Save button.
-
-        Args:
-            folder: The folder to remove.
-        """
-        folders.remove(folder)
-        folder_list.refresh()
-
-    async def add_folder() -> None:
-        """Open the folder picker and add the chosen folder to the list on the page."""
-        chosen = await FolderPicker(folders[-1] if folders else None)
-        if chosen is None:
-            return
-
-        if chosen in folders:
-            ui.notify("This folder is already in the list.", type="warning")
-            return
-
-        folders.append(chosen)
-        folder_list.refresh()
-
     def save() -> None:
-        directories = list(folders)
-        missing = [str(directory) for directory in directories if not directory.is_dir()]
-        if url_input.value.strip() and not is_valid_server_url(url_input.value):
-            ui.notify("The Ollama address must start with http:// or https://", type="negative")
-            return
-
-        chunk_size = int(chunk_size_input.value)
-        if overlap_input.value >= chunk_size:
-            ui.notify("Overlap must be smaller than the chunk size.", type="negative")
+        error = _validate_settings(url_input.value, int(chunk_size_input.value), int(overlap_input.value))
+        if error:
+            ui.notify(error, type="negative")
             return
 
         save_config(
             config.model_copy(
                 update={
                     "database_path": Path(database_path_input.value).expanduser(),
-                    "directories": directories,
+                    "directories": list(folders),
                     "embedding_model": model_input.value,
-                    "chunk_size_tokens": None
-                    if chunk_size == get_model_spec(model_input.value).default_chunk_size_tokens
-                    else chunk_size,
+                    "chunk_size_tokens": _chunk_size_override(model_input.value, int(chunk_size_input.value)),
                     "chunk_overlap_tokens": int(overlap_input.value),
                     "embedding_provider": EmbeddingProviderName(provider_input.value),
                     "ollama_base_url": url_input.value.strip() or None,
@@ -269,6 +229,7 @@ def config_page() -> None:
             )
         )
         ui.notify("Saved. The background indexer uses the new settings on its next run.", type="positive")
+        missing = [str(directory) for directory in folders if not directory.is_dir()]
         if missing:
             ui.notify(f"Folders not found: {', '.join(missing)}", type="warning")
 
@@ -276,9 +237,7 @@ def config_page() -> None:
         ui.label(f"Config file: {default_config_path()}").classes("ostra-muted")
         ui.label(_describe_status()).classes("ostra-muted")
         ui.label("Folders to index").classes("font-semibold")
-        with ui.card().classes("w-full").props("flat"):
-            folder_list()
-            ui.button("Add folder", icon="folder_open", on_click=add_folder).props(BUTTON_PROPS + " flat")
+        _folder_editor(folders)
         ui.label("Embedding model").classes("font-semibold q-mt-md")
         provider_input = ui.select(
             [provider.value for provider in EmbeddingProviderName],
@@ -305,6 +264,77 @@ def config_page() -> None:
             "Chunk overlap (tokens)", value=config.chunk_overlap_tokens, min=0, precision=0
         ).props(FIELD_PROPS)
         ui.button("Save", on_click=save).props(BUTTON_PROPS)
+
+
+def _folder_editor(folders: list[Path]) -> None:
+    """Add a card that lists the folders, with buttons to add and remove them.
+
+    Changes are made to ``folders`` in place and are saved with the Save button.
+
+    Args:
+        folders: The folders to show and edit.
+    """
+
+    @ui.refreshable
+    def folder_list() -> None:
+        """Show each folder with a remove button."""
+        if not folders:
+            ui.label("No folders yet. Add a folder to start indexing.").classes("ostra-muted")
+        for folder in folders:
+            with ui.row().classes("w-full items-center no-wrap"):
+                ui.label(str(folder)).classes("grow ostra-text")
+                ui.button(icon="close", on_click=lambda folder=folder: remove_folder(folder)).props("flat round dense")
+
+    def remove_folder(folder: Path) -> None:
+        folders.remove(folder)
+        folder_list.refresh()
+
+    async def add_folder() -> None:
+        """Open the folder picker and add the chosen folder to the list."""
+        chosen = await FolderPicker(folders[-1] if folders else None)
+        if chosen is None:
+            return
+
+        if chosen in folders:
+            ui.notify("This folder is already in the list.", type="warning")
+            return
+
+        folders.append(chosen)
+        folder_list.refresh()
+
+    with ui.card().classes("w-full").props("flat"):
+        folder_list()
+        ui.button("Add folder", icon="folder_open", on_click=add_folder).props(BUTTON_PROPS + " flat")
+
+
+def _validate_settings(url: str, chunk_size: int, overlap: int) -> str | None:
+    """Check the values of the settings form.
+
+    Args:
+        url: The Ollama server address, or an empty text for the default.
+        chunk_size: The chunk size in tokens.
+        overlap: The chunk overlap in tokens.
+
+    Returns:
+        A message that describes the first problem, or None when the values are valid.
+    """
+    if url.strip() and not is_valid_server_url(url):
+        return "The Ollama address must start with http:// or https://"
+
+    if overlap >= chunk_size:
+        return "Overlap must be smaller than the chunk size."
+
+    return None
+
+
+def _chunk_size_override(model: str, chunk_size: int) -> int | None:
+    """Return the chunk size to store in the config, or None when it equals the model default.
+
+    Args:
+        model: The name of the embedding model.
+        chunk_size: The chunk size in tokens from the form.
+    """
+    return None if chunk_size == get_model_spec(model).default_chunk_size_tokens else chunk_size
 
 
 if __name__ in {"__main__", "__mp_main__"}:
