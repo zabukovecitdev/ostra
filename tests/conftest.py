@@ -4,11 +4,15 @@ from pathlib import Path
 import pytest
 import sqlite_vec
 
+from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.models.embedding_model_spec import EmbeddingModelSpec
+from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
+from ostra.providers.tokenizers.tokenizer import Tokenizer
 from ostra.repositories.sqlite.sqlite_chunk_store import SqliteChunkStore
 from ostra.repositories.sqlite.sqlite_database import SqliteDatabase
 from ostra.repositories.sqlite.sqlite_migrator import SQLITE_MIGRATIONS_DIRECTORY, SqliteMigrator
 from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
+from ostra.services.embedding.embedding_model import EmbeddingModel
 
 
 def make_spec(model_id: str, dimensions: int, **overrides) -> EmbeddingModelSpec:
@@ -23,6 +27,27 @@ def make_spec(model_id: str, dimensions: int, **overrides) -> EmbeddingModelSpec
         "tokenizer_file": "mxbai-embed-large-v1/tokenizer.json",
     }
     return EmbeddingModelSpec(**(values | overrides))
+
+
+class WordTokenizer(Tokenizer):
+    """Count each word as one token."""
+
+    def count_tokens(self, text: str) -> int:
+        """Return the number of words in the text."""
+        return len(text.split())
+
+
+class ConstantEmbeddingProvider(EmbeddingProvider):
+    """Return the same vector for every text, with the dimensions of the model."""
+
+    def _embed(self, text: str) -> list[float]:
+        """Return a fixed vector."""
+        return [0.5] * self._spec.dimensions
+
+
+def make_fake_model(spec: EmbeddingModelSpec = MXBAI_EMBED_LARGE) -> EmbeddingModel:
+    """Stand in for the Ollama model, so that a test calls no server and downloads no tokenizer."""
+    return EmbeddingModel(spec=spec, provider=ConstantEmbeddingProvider(spec), tokenizer=WordTokenizer())
 
 
 TEST_SPEC = make_spec("test-model", 4)

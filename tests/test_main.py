@@ -3,40 +3,14 @@ import logging
 from pathlib import Path
 
 import pytest
+from conftest import make_fake_model
 
 from ostra.cli import commands, main
 from ostra.cli.parser import build_parser
 from ostra.cli.search_output import MAX_SHORT_TEXT_CHARACTERS
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
-from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
-from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
-from ostra.providers.tokenizers.tokenizer import Tokenizer
 from ostra.services import index_session
-from ostra.services.embedding.embedding_model import EmbeddingModel
-
-
-class FakeTokenizer(Tokenizer):
-    """Count each word as one token."""
-
-    def count_tokens(self, text: str) -> int:
-        """Return the number of words in the text."""
-        return len(text.split())
-
-
-class FakeEmbeddingProvider(EmbeddingProvider):
-    """Return the same 1024-value vector for every text."""
-
-    def _embed(self, text: str) -> list[float]:
-        """Return a fixed vector."""
-        return [0.5] * 1024
-
-
-def make_fake_model() -> EmbeddingModel:
-    """Stand in for the Ollama model so that the tests do not call a server or download a tokenizer."""
-    return EmbeddingModel(
-        spec=MXBAI_EMBED_LARGE, provider=FakeEmbeddingProvider(MXBAI_EMBED_LARGE), tokenizer=FakeTokenizer()
-    )
 
 
 @pytest.fixture(autouse=True)

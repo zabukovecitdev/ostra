@@ -1,30 +1,10 @@
 from pathlib import Path
 
-from ostra.models.app_config import AppConfig
+from conftest import make_fake_model
+
 from ostra.models.document import Document
-from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
-from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.sources.document_source import DocumentSource
-from ostra.providers.tokenizers.tokenizer import Tokenizer
 from ostra.repositories.model_index import ChunkWriteIndex
-from ostra.services.embedding.embedding_model import EmbeddingModel
-from ostra.services.ingestion.indexing_service import run_indexing
-
-
-class WordTokenizer(Tokenizer):
-    """Count each word as one token."""
-
-    def count_tokens(self, text: str) -> int:
-        """Return the number of words."""
-        return len(text.split())
-
-
-class FixedProvider(EmbeddingProvider):
-    """Return the same vector for every text."""
-
-    def _embed(self, text: str) -> list[float]:
-        """Return a fixed vector."""
-        return [0.5] * 1024
 
 
 class ListSource(DocumentSource):
@@ -58,12 +38,11 @@ class RecordingIndex(ChunkWriteIndex):
 def test_run_indexing__two_custom_sources__indexes_the_documents_of_both(tmp_path: Path):
     """Process every document of every injected source, in the order of the sources."""
     index = RecordingIndex()
-    model = EmbeddingModel(spec=MXBAI_EMBED_LARGE, provider=FixedProvider(MXBAI_EMBED_LARGE), tokenizer=WordTokenizer())
 
     processed = run_indexing(
         config=AppConfig(database_path=tmp_path / "db"),
         model_index=index,
-        embedding_model=model,
+        embedding_model=make_fake_model(),
         sources=[ListSource("one two"), ListSource("three")],
     )
 

@@ -2,14 +2,12 @@ import logging
 from pathlib import Path
 
 import pytest
+from conftest import make_fake_model
 
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
-from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
-from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.services import index_session
 from ostra.services.daemon import background_indexing_service, systemd_service
-from ostra.services.embedding.embedding_model import EmbeddingModel
 
 LOGGER_NAME = "ostra.services.daemon.background_indexing_service"
 
@@ -39,7 +37,7 @@ def test_index_once__empty_directory__logs_zero_files_processed(
     notes.mkdir()
     config = AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
     monkeypatch.setattr(background_indexing_service, "load_config", lambda: config)
-    monkeypatch.setattr(index_session, "build_embedding_model", lambda config, model_id=None: _fake_model())
+    monkeypatch.setattr(index_session, "build_embedding_model", lambda config, model_id=None: make_fake_model())
 
     with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
         background_indexing_service.index_once()
@@ -62,16 +60,6 @@ def test_uninstall_service__unit_missing__reports_not_installed(tmp_path: Path, 
     assert systemd_service.uninstall_service() == "Service is not installed."
 
 
-class _FakeProvider(EmbeddingProvider):
-    def _embed(self, text: str) -> list[float]:
-        return [0.0] * 1024
-
-
-class _FakeTokenizer:
-    def count_tokens(self, text: str) -> int:
-        return len(text.split())
-
-
 def test_index_once__no_directories__logs_the_hint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ):
@@ -83,7 +71,3 @@ def test_index_once__no_directories__logs_the_hint(
         background_indexing_service.index_once()
 
     assert NO_DIRECTORIES_MESSAGE in caplog.text
-
-
-def _fake_model() -> EmbeddingModel:
-    return EmbeddingModel(spec=MXBAI_EMBED_LARGE, provider=_FakeProvider(MXBAI_EMBED_LARGE), tokenizer=_FakeTokenizer())
