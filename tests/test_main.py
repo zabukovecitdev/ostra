@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ostra.cli import main
+from ostra.cli import commands, main
 from ostra.cli.parser import build_parser
 from ostra.cli.search_output import MAX_SHORT_TEXT_CHARACTERS
 from ostra.constants import NO_DIRECTORIES_MESSAGE
