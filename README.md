@@ -192,7 +192,6 @@ A source reads documents in its own thread and puts them in a bounded queue. The
 
 The layers depend on abstract classes. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
 
-
 ## Development
 
 ```bash
