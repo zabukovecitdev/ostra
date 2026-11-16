@@ -192,7 +192,6 @@ A source reads documents in its own thread and puts them in a bounded queue. The
 
 The layers depend on abstract classes. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
 
-More design notes are in [docs/design](docs/design).
 
 ## Development
 
@@ -231,7 +230,7 @@ More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
 
 - Only top-level files are read. Subfolders are skipped.
 - Only plain text formats are read. PDF and Office files are skipped.
-- A moved file is embedded again, and the rows of deleted files are not removed. See [docs/issues/moved-and-deleted-files.md](docs/issues/moved-and-deleted-files.md).
+- A moved file is embedded again, and the rows of deleted files are not removed.
 - The vector size is fixed by the migration (1024). A model with another size needs a new migration.
 - The chunk digests are SHA-256 of the chunk text. Identical text in two files is stored once per file path.
 
