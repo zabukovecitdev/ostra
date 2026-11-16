@@ -285,7 +285,7 @@ def test_process_files__reindex__embeds_every_chunk_again(index, tmp_path: Path)
 
 def test_process_documents__document_from_any_source__stores_chunks_under_its_id_with_source_and_title(index):
     """Store the chunks of a document that did not come from a file, with its source and title."""
-    document = Document(source="notes", document_id="note://1", version="v1", title="One", text="alpha beta")
+    document = Document(source="notes", document_id="note://1", title="One", text="alpha beta")
     pipeline = IngestionPipeline(
         model_index=index,
         chunker=TextChunker(chunk_size_tokens=510, chunk_overlap_tokens=50, count_tokens=one_token_per_word),
@@ -311,7 +311,7 @@ def test_process_documents__callback_set__receives_each_document_id(index):
         reindex=False,
         on_document_processed=seen.append,
     )
-    documents = [Document("notes", f"note://{number}", "v", "t", "text") for number in (1, 2)]
+    documents = [Document("notes", f"note://{number}", "t", "text") for number in (1, 2)]
 
     pipeline.process_documents(documents)
 
@@ -328,7 +328,7 @@ def test_process_documents__embedding_fails_midway__keeps_finished_chunks_and_re
             return super()._embed(text)
 
     chunker = TextChunker(chunk_size_tokens=1, chunk_overlap_tokens=0, count_tokens=one_token_per_word)
-    document = Document("notes", "note://1", "v", "t", "alpha beta gamma")
+    document = Document("notes", "note://1", "t", "alpha beta gamma")
     failing = IngestionPipeline(index, chunker, FailingProvider(), reindex=False)
 
     with pytest.raises(RuntimeError, match="Ollama is down"):
@@ -351,8 +351,7 @@ def test_process_documents__callbacks__started_before_each_document_and_processe
         on_document_started=lambda document_id: events.append(f"started {document_id}"),
     )
     documents = [
-        Document(source="filesystem", document_id=f"doc{number}", version="v", title="t", text="words here")
-        for number in (1, 2)
+        Document(source="filesystem", document_id=f"doc{number}", title="t", text="words here") for number in (1, 2)
     ]
 
     pipeline.process_documents(documents)

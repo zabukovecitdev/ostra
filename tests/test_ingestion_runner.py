@@ -9,7 +9,7 @@ from ostra.services.ingestion_runner import run_ingestion
 
 
 def make_document(number: int) -> Document:
-    return Document("test", f"doc://{number}", "v", f"Document {number}", "text")
+    return Document("test", f"doc://{number}", f"Document {number}", "text")
 
 
 class ListSource(DocumentSource):

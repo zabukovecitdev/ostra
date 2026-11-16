@@ -59,7 +59,7 @@ def test_ingestion_pipeline__in_memory_index__stores_chunks_without_sqlite():
         model_index=index, chunker=chunker, embedding_provider=FakeEmbeddingProvider(MXBAI), reindex=False
     )
 
-    pipeline.process_documents([Document(source="s", document_id="a.txt", version="1", title="a", text="alpha beta")])
+    pipeline.process_documents([Document(source="s", document_id="a.txt", title="a", text="alpha beta")])
 
     assert index.saved == {"a.txt": ["alpha beta"]}
 

@@ -36,7 +36,7 @@ class ListSource(DocumentSource):
     def stream_documents(self):
         """Yield one document for each text."""
         for number, text in enumerate(self._texts):
-            yield Document(source="list", document_id=f"doc{number}", version="1", title="t", text=text)
+            yield Document(source="list", document_id=f"doc{number}", title="t", text=text)
 
 
 class RecordingIndex(ChunkWriteIndex):

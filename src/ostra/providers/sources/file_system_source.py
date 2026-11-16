@@ -4,7 +4,6 @@ from pathlib import Path
 
 from ostra.models.document import Document
 from ostra.providers.sources.document_source import DocumentSource
-from ostra.utils.hashing import hash_file
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ TEXT_FILE_EXTENSIONS = frozenset({".txt", ".md", ".csv"})
 class FileSystemSource(DocumentSource):
     """Offer the text files of folders as documents.
 
-    The document ID of a file is its path. The version of a file is the digest of its bytes.
+    The document ID of a file is its path.
     """
 
     def __init__(self, directories: list[Path], recursive: bool = False):
@@ -88,7 +87,6 @@ def _read_document(file_path: Path) -> Document:
     return Document(
         source=SOURCE_NAME,
         document_id=str(file_path),
-        version=hash_file(file_path),
         title=file_path.name,
         text=file_path.read_text(encoding="utf-8", errors="replace"),
     )
