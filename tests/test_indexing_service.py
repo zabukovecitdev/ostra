@@ -2,9 +2,11 @@ from pathlib import Path
 
 from conftest import make_fake_model
 
+from ostra.models.app_config import AppConfig
 from ostra.models.document import Document
 from ostra.providers.sources.document_source import DocumentSource
 from ostra.repositories.model_index import ChunkWriteIndex
+from ostra.services.ingestion.indexing_service import run_indexing
 
 
 class ListSource(DocumentSource):
