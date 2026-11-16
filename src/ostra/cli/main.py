@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from ostra.cli import configure_logging
+from ostra.cli.progress import ProgressReporter
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS
@@ -83,14 +84,17 @@ def _index_files(arguments, config, model_index: ChunkWriteIndex, embedding_mode
         print(NO_DIRECTORIES_MESSAGE)
         return
 
-    run_indexing(
-        config=config,
-        model_index=model_index,
-        embedding_model=embedding_model,
-        sources=build_sources(config, directories=directories, recursive=arguments.recursive),
-        reindex=arguments.reindex,
-        show_progress=True,
-    )
+    sources = build_sources(config, directories=directories, recursive=arguments.recursive)
+    with ProgressReporter(sources) as progress:
+        run_indexing(
+            config=config,
+            model_index=model_index,
+            embedding_model=embedding_model,
+            sources=sources,
+            reindex=arguments.reindex,
+            on_document_started=progress.document_started,
+            on_document_processed=progress.document_processed,
+        )
 
 
 def _print_search_results(query, limit, max_distance, full_text, as_json, embedding_provider, model_index) -> None:
