@@ -31,7 +31,6 @@ Everything runs on your machine. No text leaves it.
 - [Usage](#usage)
 - [Background indexing (Linux)](#background-indexing-linux)
 - [Desktop interface](#desktop-interface)
-- [Evaluating retrieval](#evaluating-retrieval)
 - [Architecture](#architecture)
 - [Development](#development)
 - [Performance](#performance)
@@ -47,7 +46,6 @@ Everything runs on your machine. No text leaves it.
 - **One index for each model.** Vectors of two models never mix, so you can compare models on the same files.
 - **Vector search** with cosine distance, from the command line, as JSON, or in a local web interface.
 - **SQLite storage with `sqlite-vec`.** One database holds an index for each embedding model, with versioned migrations.
-- **Retrieval evaluation** with hit rate, recall and MRR, to measure each change to chunking, models or search.
 - **Background indexing** as a systemd user service.
 - **Owner-only file permissions** on the database, the config file and their folders. Linux and macOS apply these modes. On Windows they have no effect.
 
@@ -138,6 +136,7 @@ The Ollama server address comes from the `OLLAMA_BASE_URL` environment variable 
 | `ostra search "query" --max-distance 0.4` | Hide chunks whose cosine distance is above 0.4 (0 is the same direction, 2 is opposite) |
 | `ostra search "query" --full` | Print the whole text of each chunk |
 | `ostra search "query" --json` | Print the chunks as a JSON list with the full text |
+| `ostra index --database PATH` / `ostra search "query" --database PATH` | Use another SQLite database file for one run instead of `database_path` from the config |
 
 Run `ostra --help` or `ostra index --help` for the full list of options.
 
@@ -172,28 +171,6 @@ ostra-app                     # opens http://127.0.0.1:8765
 
 On the first start, with no folders set, a welcome page shows one button that adds folders. It also shows whether Ollama and the model are ready, with a link to install them when they are not. The config page has a folder picker. The interface listens on the local machine only, so the picker lists the folders of the computer that runs it.
 
-## Evaluating retrieval
-
-`ostra eval` measures how well the search finds the right chunks. It reads a JSON test set. Each case has a query and the chunks that the search must return:
-
-```json
-[
-  {"query": "Which bird walks along the stream bottom?",
-   "relevant": [{"file": "river_ecosystems_field_guide.txt", "text": "Dippers walk along the bed"}]}
-]
-```
-
-A result matches when its file path ends with `file`. When `text` is set, the chunk must also contain it. Keep `text` short, so that it does not cross a chunk boundary.
-
-| Command | Effect |
-|---|---|
-| `ostra eval cases.json --limit 5` | Print the rank of each case, the hit rate, recall and MRR at 5, and the mean distance of relevant and other results |
-| `ostra eval cases.json --query-prefix "TEXT "` | Put a query instruction in front of each query, to compare instructions of the model |
-| `ostra eval cases.json --json` | Print the report as JSON |
-| `make eval-sample` | Index `tests/data` into a scratch folder and run `evals/sample_cases.json`. It needs a running Ollama. |
-
-Use the mean distances to choose `--max-distance`: set it between the relevant and the other distance. Run the same test set before and after you change the chunk size, the model or the search code.
-
 ## Architecture
 
 ```
@@ -208,15 +185,12 @@ src/ostra/
 ├── repositories/          storage: SqliteChunkStore with one SqliteModelIndex for each embedding model
 │   └── sqlite/            SQLite + sqlite-vec, versioned migrations, one index for each model
 ├── models/                data types, model registry (one spec for each model), EmbeddingModel bundle
-├── evaluation/            test set loading and retrieval metrics
 └── enums/, errors/, utils/, constants.py
 ```
 
 A source reads documents in its own thread and puts them in a bounded queue. The pipeline takes them from the queue, and it does not know where they come from. A new source, such as notes or email, is one new `DocumentSource` class. The document ID is the key of the stored chunks. The file system source uses the file path.
 
 The layers depend on abstract classes. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
-
-More design notes are in [docs/design](docs/design).
 
 ## Development
 
@@ -255,7 +229,7 @@ More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
 
 - Only top-level files are read. Subfolders are skipped.
 - Only plain text formats are read. PDF and Office files are skipped.
-- A moved file is embedded again, and the rows of deleted files are not removed. See [docs/issues/moved-and-deleted-files.md](docs/issues/moved-and-deleted-files.md).
+- A moved file is embedded again, and the rows of deleted files are not removed.
 - The vector size is fixed by the migration (1024). A model with another size needs a new migration.
 - The chunk digests are SHA-256 of the chunk text. Identical text in two files is stored once per file path.
 
