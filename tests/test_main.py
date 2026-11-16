@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from ostra.cli import main
+from ostra.cli.parser import build_parser
+from ostra.cli.search_output import MAX_SHORT_TEXT_CHARACTERS
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
@@ -105,7 +107,7 @@ def test_main__search_flag__prints_stored_chunk_with_its_file(
 
 def test_main__search_flag_without_limit__uses_default_limit():
     """Use five as the default number of chunks for a search."""
-    arguments = main._build_parser().parse_args(["search", "alpha"])
+    arguments = build_parser().parse_args(["search", "alpha"])
 
     assert (arguments.query, arguments.limit) == ("alpha", 5)
 
@@ -133,7 +135,7 @@ def test_main__directory_flag__processes_given_folder_instead_of_config(
 
 def test_main__directory_flag_repeated__processes_every_folder(tmp_path: Path):
     """Keep every folder when the directory flag is repeated."""
-    arguments = main._build_parser().parse_args(["index", "--directory", "/data/one", "--directory", "~/two"])
+    arguments = build_parser().parse_args(["index", "--directory", "/data/one", "--directory", "~/two"])
 
     assert arguments.directory == [Path("/data/one"), Path("~/two")]
 
@@ -200,7 +202,7 @@ def test_main__search_long_text__prints_shortened_text_with_ellipsis(
 
     text_line = capsys.readouterr().out.splitlines()[1]
     assert text_line.endswith("...")
-    assert len(text_line) <= main.MAX_SHORT_TEXT_CHARACTERS + len("...")
+    assert len(text_line) <= MAX_SHORT_TEXT_CHARACTERS + len("...")
 
 
 def test_main__search_full_flag__prints_whole_chunk_text(
@@ -213,7 +215,7 @@ def test_main__search_full_flag__prints_whole_chunk_text(
     main.main(["search", "word", "--limit", "1", "--full"])
 
     text_line = capsys.readouterr().out.splitlines()[1]
-    assert len(text_line) > main.MAX_SHORT_TEXT_CHARACTERS
+    assert len(text_line) > MAX_SHORT_TEXT_CHARACTERS
     assert not text_line.endswith("...")
 
 
@@ -254,12 +256,12 @@ def test_main__search_json_flag__prints_list_with_full_text(
     assert len(chunks) == 2
     assert chunks[0]["file_path"] == str(file_path)
     assert chunks[0]["similarity"] == pytest.approx(1.0)
-    assert len(chunks[0]["text"]) > main.MAX_SHORT_TEXT_CHARACTERS
+    assert len(chunks[0]["text"]) > MAX_SHORT_TEXT_CHARACTERS
 
 
 def test_main__search_max_distance_option__parses_float():
     """Read the maximum distance as a number."""
-    arguments = main._build_parser().parse_args(["search", "alpha", "--max-distance", "0.4"])
+    arguments = build_parser().parse_args(["search", "alpha", "--max-distance", "0.4"])
 
     assert arguments.max_distance == 0.4
 
@@ -277,7 +279,7 @@ def test_main__index_without_directories__prints_hint(
 
 def test_main__positional_folders__are_combined_with_directory_flag():
     """Keep the positional folders first, then the folders from the directory flag."""
-    arguments = main._build_parser().parse_args(["index", "/data/one", "~/two", "--directory", "/data/three"])
+    arguments = build_parser().parse_args(["index", "/data/one", "~/two", "--directory", "/data/three"])
 
     assert arguments.folders == [Path("/data/one"), Path("~/two")]
     assert arguments.directory == [Path("/data/three")]
@@ -285,7 +287,7 @@ def test_main__positional_folders__are_combined_with_directory_flag():
 
 def test_main__positional_folder_with_recursive__parses_both():
     """Accept the recursive flag after a positional folder."""
-    arguments = main._build_parser().parse_args(["index", "/data/notes", "--recursive"])
+    arguments = build_parser().parse_args(["index", "/data/notes", "--recursive"])
 
     assert arguments.folders == [Path("/data/notes")]
     assert arguments.recursive is True
