@@ -30,7 +30,6 @@ Everything runs on your machine. No text leaves it.
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Background indexing (Linux)](#background-indexing-linux)
-- [Desktop interface](#desktop-interface)
 - [Architecture](#architecture)
 - [Development](#development)
 - [Performance](#performance)
@@ -44,7 +43,7 @@ Everything runs on your machine. No text leaves it.
 - **Resumable ingestion.** Each chunk is stored under its content digest. A rerun skips chunks that are already embedded, so an interrupted run continues where it stopped.
 - **Local embeddings** through [Ollama](https://ollama.com), with `mxbai-embed-large` (default) or `bge-m3` for multilingual text.
 - **One index for each model.** Vectors of two models never mix, so you can compare models on the same files.
-- **Vector search** with cosine distance, from the command line, as JSON, or in a local web interface.
+- **Vector search** with cosine distance, from the command line, with plain text or JSON output.
 - **SQLite storage with `sqlite-vec`.** One database holds an index for each embedding model, with versioned migrations.
 - **Background indexing** as a systemd user service.
 - **Owner-only file permissions** on the database, the config file and their folders. Linux and macOS apply these modes. On Windows they have no effect.
@@ -85,10 +84,10 @@ Everything runs on your machine. No text leaves it.
 
 ## Installation
 
-Install the command line tools and the web interface from GitHub:
+Install the command line tools from GitHub:
 
 ```bash
-uv tool install 'ostra[gui] @ git+https://github.com/zabukovecitdev/ostra'
+uv tool install 'ostra @ git+https://github.com/zabukovecitdev/ostra'
 ```
 
 
@@ -97,14 +96,14 @@ For development, clone the repository instead:
 ```bash
 git clone https://github.com/zabukovecitdev/ostra.git
 cd ostra
-uv sync --extra gui
+uv sync
 ```
 
 ## Quick start
 
 ```bash
 uv sync
-# add your folders to "directories" in the config file, or use the config page of ostra-app
+# add your folders to "directories" in the config file
 make run                      # process the configured folders
 make search QUERY="solar system" LIMIT=3
 ```
@@ -151,7 +150,7 @@ make help             # list every target
 
 ## Background indexing (Linux)
 
-`ostra-daemon` indexes the configured folders in a loop. It reads the config file again on each run. It writes the result of the last run to `status.json` in the user data folder.
+`ostra-daemon` indexes the configured folders in a loop. It reads the config file again on each run. It logs the result of each run.
 
 | Command | Effect |
 |---|---|
@@ -161,23 +160,12 @@ make help             # list every target
 
 The SQLite database uses write-ahead logging, so `ostra search` works while the daemon writes.
 
-## Desktop interface
-
-A local web interface has a search page and a config page. The config page edits the folders, database path and chunk sizes. It also shows the result of the last background run. The **Index now** button starts one indexing run at once with the saved settings, and it shows the result when the run ends.
-
-```bash
-ostra-app                     # opens http://127.0.0.1:8765
-```
-
-On the first start, with no folders set, a welcome page shows one button that adds folders. It also shows whether Ollama and the model are ready, with a link to install them when they are not. The config page has a folder picker. The interface listens on the local machine only, so the picker lists the folders of the computer that runs it.
-
 ## Architecture
 
 ```
 src/ostra/
 ├── cli/                   command line entry points: ostra, ostra-daemon (systemd service)
-├── gui/                   local web interface (NiceGUI)
-├── services/              indexing, ingestion pipeline and runner, search, background indexing, Ollama status
+├── services/              indexing, ingestion pipeline and runner, search, background indexing
 ├── providers/             adapters to outside systems
 │   ├── sources/           DocumentSource (abstract) and the file system source
 │   ├── embeddings/        EmbeddingProvider (abstract, applies query and document prefixes) and the Ollama provider
@@ -195,7 +183,7 @@ The layers depend on abstract classes. A new embedding model is one `EmbeddingMo
 ## Development
 
 ```bash
-uv sync --extra gui
+uv sync
 make hooks            # install git hooks: checks on commit, tests on push
 make check            # lint, format check, type check and tests
 ```

@@ -1,12 +1,9 @@
 import logging
 import time
-from datetime import UTC, datetime
-from pathlib import Path
 
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.repositories.config_repository import load_config
-from ostra.repositories.status_repository import STATUS_PATH, write_status
 from ostra.services.index_session import open_index
 from ostra.services.indexing_service import run_indexing
 from ostra.services.source_factory import build_sources
@@ -27,39 +24,25 @@ def run_forever(interval_minutes: int) -> None:
         time.sleep(interval_minutes * 60)
 
 
-def index_once(status_path: Path = STATUS_PATH) -> None:
-    """Index the configured folders one time and write the result to the status file.
+def index_once() -> None:
+    """Index the configured folders one time and log the result.
 
     The config file is read again on each run, so setting changes apply to the next run.
-    The error is logged and saved in the status file. It is not raised.
-
-    Args:
-        status_path: Location of the JSON status file.
+    The error is logged. It is not raised.
     """
-    started_at = datetime.now(UTC)
     processed_files: list[str] = []
-    error = None
-    message = None
     try:
         config = load_config()
-        if config.directories:
-            _index_directories(config, processed_files)
-        else:
-            message = NO_DIRECTORIES_MESSAGE
-    except Exception as exception:
-        logger.exception("Indexing run failed.")
-        error = str(exception)
+        if not config.directories:
+            logger.warning(NO_DIRECTORIES_MESSAGE)
+            return
 
-    write_status(
-        {
-            "started_at": started_at.isoformat(),
-            "finished_at": datetime.now(UTC).isoformat(),
-            "files_processed": len(processed_files),
-            "error": error,
-            "message": message,
-        },
-        status_path,
-    )
+        _index_directories(config, processed_files)
+    except Exception:
+        logger.exception("Indexing run failed.")
+        return
+
+    logger.info("Indexing run finished. FilesProcessed=%d", len(processed_files))
 
 
 def _index_directories(config: AppConfig, processed_files: list[str]) -> None:

@@ -1,4 +1,4 @@
-import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -10,37 +10,40 @@ from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.services import background_indexing_service, index_session, systemd_service
 
+LOGGER_NAME = "ostra.services.background_indexing_service"
 
-def test_index_once__config_fails__writes_error_to_status_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Save the error in the status file and do not raise it."""
+
+def test_index_once__config_fails__logs_error_and_does_not_raise(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """Log the error and do not raise it, so the loop goes on."""
 
     def fail_to_load():
         raise ValueError("bad config")
 
     monkeypatch.setattr(background_indexing_service, "load_config", fail_to_load)
-    status_path = tmp_path / "status.json"
 
-    background_indexing_service.index_once(status_path=status_path)
+    with caplog.at_level(logging.ERROR, logger=LOGGER_NAME):
+        background_indexing_service.index_once()
 
-    status = json.loads(status_path.read_text())
-    assert status["error"] == "bad config"
-    assert status["files_processed"] == 0
+    assert "Indexing run failed." in caplog.text
+    assert "bad config" in caplog.text
 
 
-def test_index_once__empty_directory__writes_status_without_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Report zero processed files and no error for an empty folder."""
+def test_index_once__empty_directory__logs_zero_files_processed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """Report zero processed files for an empty folder."""
     notes = tmp_path / "notes"
     notes.mkdir()
     config = AppConfig(database_path=tmp_path / "ostra.db", directories=[notes])
     monkeypatch.setattr(background_indexing_service, "load_config", lambda: config)
     monkeypatch.setattr(index_session, "build_embedding_model", lambda config, model_id=None: _fake_model())
-    status_path = tmp_path / "status.json"
 
-    background_indexing_service.index_once(status_path=status_path)
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        background_indexing_service.index_once()
 
-    status = json.loads(status_path.read_text())
-    assert status["error"] is None
-    assert status["files_processed"] == 0
+    assert "FilesProcessed=0" in caplog.text
 
 
 def test_unit_template__interval_given__puts_interval_in_exec_start():
@@ -68,17 +71,17 @@ class _FakeTokenizer:
         return len(text.split())
 
 
-def test_index_once__no_directories__writes_message_and_no_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """Tell the user to add folders and report no error when the folder list is empty."""
+def test_index_once__no_directories__logs_the_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    """Tell the user to add folders when the folder list is empty."""
     config = AppConfig(database_path=tmp_path / "ostra.db")
     monkeypatch.setattr(background_indexing_service, "load_config", lambda: config)
-    status_path = tmp_path / "status.json"
 
-    background_indexing_service.index_once(status_path=status_path)
+    with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
+        background_indexing_service.index_once()
 
-    status = json.loads(status_path.read_text())
-    assert status["error"] is None
-    assert status["message"] == NO_DIRECTORIES_MESSAGE
+    assert NO_DIRECTORIES_MESSAGE in caplog.text
 
 
 def _fake_model() -> EmbeddingModel:

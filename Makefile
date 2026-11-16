@@ -5,8 +5,6 @@ DIRECTORY_FLAG = $(if $(DIRECTORY),--directory $(DIRECTORY))
 # Set RECURSIVE=1 to index the files in subfolders too, e.g. make run DIRECTORY=~/notes RECURSIVE=1
 RECURSIVE ?=
 RECURSIVE_FLAG = $(if $(RECURSIVE),--recursive)
-# Optional parts to install with make install. The gui extra is needed by ostra-app.
-EXTRAS ?= gui
 
 .DEFAULT_GOAL := help
 
@@ -15,8 +13,8 @@ EXTRAS ?= gui
 help: ## Show the available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
 
-install: ## Install the ostra commands for your user with EXTRAS (default gui), e.g. make install EXTRAS=gui
-	uv tool install --editable --reinstall '.$(if $(EXTRAS),[$(EXTRAS)])'
+install: ## Install the ostra commands for your user
+	uv tool install --editable --reinstall .
 
 uninstall: ## Remove the installed ostra commands
 	uv tool uninstall ostra
