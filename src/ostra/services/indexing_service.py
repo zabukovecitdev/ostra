@@ -8,7 +8,7 @@ from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
 from ostra.providers.sources.document_source import DocumentSource
 from ostra.providers.sources.file_system_source import FileSystemSource
-from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
+from ostra.repositories.model_index import ChunkWriteIndex
 from ostra.services.ingestion_pipeline import IngestionPipeline
 from ostra.services.ingestion_runner import run_ingestion
 from ostra.services.text_chunker import TextChunker
@@ -16,7 +16,7 @@ from ostra.services.text_chunker import TextChunker
 
 def build_pipeline(
     config: AppConfig,
-    model_index: SqliteModelIndex,
+    model_index: ChunkWriteIndex,
     embedding_model: EmbeddingModel,
     reindex: bool = False,
     on_document_processed: Callable[[str], None] | None = None,
@@ -51,7 +51,7 @@ def build_pipeline(
 
 def run_indexing(
     config: AppConfig,
-    model_index: SqliteModelIndex,
+    model_index: ChunkWriteIndex,
     embedding_model: EmbeddingModel,
     directories: list[Path] | None = None,
     reindex: bool = False,

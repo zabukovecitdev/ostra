@@ -1,14 +1,14 @@
 from ostra.models.app_config import AppConfig
 from ostra.models.chunk_match import ChunkMatch
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
-from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
+from ostra.repositories.model_index import ChunkSearchIndex
 from ostra.services.index_session import open_index
 
 
 class ChunkSearchService:
     """Find the stored chunks that are closest in meaning to a query text."""
 
-    def __init__(self, embedding_provider: EmbeddingProvider, model_index: SqliteModelIndex):
+    def __init__(self, embedding_provider: EmbeddingProvider, model_index: ChunkSearchIndex):
         self._embedding_provider = embedding_provider
         self._model_index = model_index
 

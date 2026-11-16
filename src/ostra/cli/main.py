@@ -7,7 +7,7 @@ from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS
 from ostra.repositories.config_repository import load_config
-from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
+from ostra.repositories.model_index import ChunkWriteIndex
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.index_session import open_index
 from ostra.services.indexing_service import run_indexing
@@ -67,7 +67,7 @@ def _apply_database_override(config: AppConfig, database: Path | None) -> AppCon
     return config.model_copy(update={"database_path": database.expanduser()})
 
 
-def _index_files(arguments, config, model_index: SqliteModelIndex, embedding_model) -> None:
+def _index_files(arguments, config, model_index: ChunkWriteIndex, embedding_model) -> None:
     """Embed and store the new or changed chunks of the folders.
 
     Args:
