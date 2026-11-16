@@ -7,7 +7,7 @@ from typing import Self
 
 import sqlite_vec
 
-from ostra.constants import OWNER_ONLY_DIRECTORY_MODE, OWNER_ONLY_FILE_MODE
+from ostra.utils.owner_only import ensure_owner_only_directory, open_owner_only_file, restrict_owner_only_file
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +34,14 @@ class SqliteDatabase:
         Load the sqlite-vec extension when the file is created.
         """
         database_path = self._path
-        database_path.parent.mkdir(mode=OWNER_ONLY_DIRECTORY_MODE, parents=True, exist_ok=True)
-        database_path.parent.chmod(OWNER_ONLY_DIRECTORY_MODE)
+        ensure_owner_only_directory(database_path.parent)
 
         if database_path.exists():
-            database_path.chmod(OWNER_ONLY_FILE_MODE)
+            restrict_owner_only_file(database_path)
             return
 
         logger.info("Database not found. Creating it. Path=%s", database_path)
-        os.close(os.open(database_path, os.O_CREAT | os.O_WRONLY, OWNER_ONLY_FILE_MODE))
+        os.close(open_owner_only_file(database_path))
         try:
             vec_version = self.connect().execute("SELECT vec_version()").fetchone()[0]
         finally:

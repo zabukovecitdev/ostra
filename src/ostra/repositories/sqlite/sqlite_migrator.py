@@ -3,8 +3,8 @@ import os
 import sqlite3
 from pathlib import Path
 
-from ostra.constants import OWNER_ONLY_FILE_MODE
 from ostra.repositories.sqlite.sqlite_database import SqliteDatabase
+from ostra.utils.owner_only import open_owner_only_file
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class SqliteMigrator:
             return
 
         logger.info("Saving a copy of the database before the migration. Path=%s", backup_path)
-        os.close(os.open(backup_path, os.O_CREAT | os.O_WRONLY, OWNER_ONLY_FILE_MODE))
+        os.close(open_owner_only_file(backup_path))
         backup = sqlite3.connect(backup_path)
         try:
             connection.backup(backup)

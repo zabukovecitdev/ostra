@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS, DEFAULT_DATABASE_PATH
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
@@ -11,9 +11,9 @@ from ostra.models.embedding_model_registry import DEFAULT_EMBEDDING_MODEL, EMBED
 class AppConfig(BaseSettings):
     """Hold the application settings.
 
-    Each setting comes from the first of these that sets it: a keyword argument, an environment variable with
-    the OSTRA_ prefix, the config file, the default value. For example OSTRA_EMBEDDING_MODEL=bge-m3 selects
-    that model for one run. A list setting such as OSTRA_DIRECTORIES takes a JSON list. Paths accept a leading ~
+    Each setting comes from the first of these that sets it: an environment variable with the OSTRA_ prefix, a
+    keyword argument (the values of the config file), the default value. For example OSTRA_EMBEDDING_MODEL=bge-m3
+    selects that model for one run. A list setting such as OSTRA_DIRECTORIES takes a JSON list. Paths accept a leading ~
     for the home directory.
     """
 
@@ -28,6 +28,18 @@ class AppConfig(BaseSettings):
     embedding_model: str = DEFAULT_EMBEDDING_MODEL
     # None means the OLLAMA_BASE_URL environment variable or the local default applies.
     ollama_base_url: str | None = None
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Let an environment variable override the values that the config file passes as keyword arguments."""
+        return env_settings, init_settings
 
     @field_validator("database_path")
     @classmethod
