@@ -60,7 +60,7 @@ def test_run_indexing__two_custom_sources__indexes_the_documents_of_both(tmp_pat
     index = RecordingIndex()
     model = EmbeddingModel(spec=MXBAI_EMBED_LARGE, provider=FixedProvider(MXBAI_EMBED_LARGE), tokenizer=WordTokenizer())
 
-    run_indexing(
+    processed = run_indexing(
         config=AppConfig(database_path=tmp_path / "db"),
         model_index=index,
         embedding_model=model,
@@ -68,3 +68,4 @@ def test_run_indexing__two_custom_sources__indexes_the_documents_of_both(tmp_pat
     )
 
     assert index.saved == ["doc0", "doc0"]
+    assert processed == 2

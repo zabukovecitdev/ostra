@@ -30,33 +30,33 @@ def index_once() -> None:
     The config file is read again on each run, so setting changes apply to the next run.
     The error is logged. It is not raised.
     """
-    processed_files: list[str] = []
     try:
         config = load_config()
         if not config.directories:
             logger.warning(NO_DIRECTORIES_MESSAGE)
             return
 
-        _index_directories(config, processed_files)
+        processed = _index_directories(config)
     except Exception:
         logger.exception("Indexing run failed.")
         return
 
-    logger.info("Indexing run finished. FilesProcessed=%d", len(processed_files))
+    logger.info("Indexing run finished. FilesProcessed=%d", processed)
 
 
-def _index_directories(config: AppConfig, processed_files: list[str]) -> None:
+def _index_directories(config: AppConfig) -> int:
     """Embed and store the chunks of the configured folders.
 
     Args:
         config: The application settings.
-        processed_files: List that receives the ID of each processed document.
+
+    Returns:
+        The number of documents that were processed.
     """
     with open_index(config, create=True) as session:
-        run_indexing(
+        return run_indexing(
             config=config,
             model_index=session.model_index,
             embedding_model=session.embedding_model,
             sources=build_sources(config),
-            on_document_processed=processed_files.append,
         )

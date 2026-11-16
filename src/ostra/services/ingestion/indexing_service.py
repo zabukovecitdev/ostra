@@ -52,7 +52,7 @@ def run_indexing(
     reindex: bool = False,
     on_document_processed: Callable[[str], None] | None = None,
     on_document_started: Callable[[str], None] | None = None,
-) -> None:
+) -> int:
     """Read the documents of every source and embed and store their chunks.
 
     Args:
@@ -63,6 +63,9 @@ def run_indexing(
         reindex: Embed every chunk again, including chunks that are already stored.
         on_document_processed: Callback that receives the ID of each processed document.
         on_document_started: Callback that receives the ID of each document before it is processed.
+
+    Returns:
+        The number of documents that were processed.
     """
     pipeline = build_pipeline(
         config=config,
@@ -72,5 +75,4 @@ def run_indexing(
         on_document_processed=on_document_processed,
         on_document_started=on_document_started,
     )
-    for source in sources:
-        run_ingestion(source, pipeline)
+    return sum(run_ingestion(source, pipeline) for source in sources)
