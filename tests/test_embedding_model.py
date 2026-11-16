@@ -1,10 +1,10 @@
 import pytest
 from conftest import make_spec
 
-from ostra.models.embedding_model import EmbeddingModel
 from ostra.models.vector import Vector
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.tokenizers.tokenizer import Tokenizer
+from ostra.services.embedding.embedding_model import EmbeddingModel
 
 
 class FakeTokenizer(Tokenizer):

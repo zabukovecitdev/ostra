@@ -1,12 +1,12 @@
 from collections.abc import Callable
 
 from ostra.models.app_config import AppConfig
-from ostra.models.embedding_model import EmbeddingModel
 from ostra.providers.sources.document_source import DocumentSource
 from ostra.repositories.model_index import ChunkWriteIndex
-from ostra.services.ingestion_pipeline import IngestionPipeline
-from ostra.services.ingestion_runner import run_ingestion
-from ostra.services.text_chunker import TextChunker
+from ostra.services.embedding.embedding_model import EmbeddingModel
+from ostra.services.ingestion.ingestion_pipeline import IngestionPipeline
+from ostra.services.ingestion.ingestion_runner import run_ingestion
+from ostra.services.ingestion.text_chunker import TextChunker
 
 
 def build_pipeline(

@@ -6,8 +6,8 @@ from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.repositories.model_index import ChunkSearchIndex, ChunkWriteIndex, ModelIndex
 from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
 from ostra.services.chunk_search_service import ChunkSearchService
-from ostra.services.ingestion_pipeline import IngestionPipeline
-from ostra.services.text_chunker import TextChunker
+from ostra.services.ingestion.ingestion_pipeline import IngestionPipeline
+from ostra.services.ingestion.text_chunker import TextChunker
 
 
 class FakeEmbeddingProvider(EmbeddingProvider):

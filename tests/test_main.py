@@ -7,11 +7,11 @@ import pytest
 from ostra.cli import main
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
-from ostra.models.embedding_model import EmbeddingModel
 from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.tokenizers.tokenizer import Tokenizer
 from ostra.services import index_session
+from ostra.services.embedding.embedding_model import EmbeddingModel
 
 
 class FakeTokenizer(Tokenizer):

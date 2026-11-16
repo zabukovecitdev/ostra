@@ -1,8 +1,8 @@
 import argparse
 
 from ostra.cli import configure_logging
-from ostra.services.background_indexing_service import run_forever
-from ostra.services.systemd_service import install_service, uninstall_service
+from ostra.services.daemon.background_indexing_service import run_forever
+from ostra.services.daemon.systemd_service import install_service, uninstall_service
 
 DEFAULT_INTERVAL_MINUTES = 15
 

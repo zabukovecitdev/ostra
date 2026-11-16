@@ -3,10 +3,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from ostra.models.app_config import AppConfig
-from ostra.models.embedding_model import EmbeddingModel
 from ostra.repositories.model_index import ModelIndex
 from ostra.repositories.sqlite.sqlite_chunk_store import SqliteChunkStore
-from ostra.services.embedding_model_factory import build_embedding_model
+from ostra.services.embedding.embedding_model import EmbeddingModel
+from ostra.services.embedding.embedding_model_factory import build_embedding_model
 
 
 @dataclass(frozen=True)

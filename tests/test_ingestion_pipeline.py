@@ -12,9 +12,9 @@ from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.sources.file_system_source import FileSystemSource
 from ostra.repositories.sqlite.sqlite_chunk_store import SqliteChunkStore
 from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
-from ostra.services.ingestion_pipeline import IngestionPipeline
-from ostra.services.ingestion_runner import run_ingestion
-from ostra.services.text_chunker import TextChunker
+from ostra.services.ingestion.ingestion_pipeline import IngestionPipeline
+from ostra.services.ingestion.ingestion_runner import run_ingestion
+from ostra.services.ingestion.text_chunker import TextChunker
 from ostra.utils.hashing import hash_text
 
 DATA_DIRECTORY = Path(__file__).parent / "data"

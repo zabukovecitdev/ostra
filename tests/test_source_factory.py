@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from ostra.models.app_config import AppConfig
-from ostra.services.source_factory import build_sources
+from ostra.services.ingestion.source_factory import build_sources
 
 
 def test_build_sources__no_directories_given__uses_configured_folders(tmp_path: Path):

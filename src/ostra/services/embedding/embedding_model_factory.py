@@ -2,11 +2,11 @@ import os
 
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.app_config import AppConfig
-from ostra.models.embedding_model import EmbeddingModel
 from ostra.models.embedding_model_registry import get_model_spec
 from ostra.models.ollama_settings import OllamaSettings
 from ostra.providers.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider
 from ostra.providers.tokenizers.hugging_face_tokenizer import HuggingFaceTokenizer
+from ostra.services.embedding.embedding_model import EmbeddingModel
 
 
 def ollama_settings(config: AppConfig) -> OllamaSettings:

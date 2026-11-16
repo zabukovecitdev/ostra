@@ -2,13 +2,13 @@ from pathlib import Path
 
 from ostra.models.app_config import AppConfig
 from ostra.models.document import Document
-from ostra.models.embedding_model import EmbeddingModel
 from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.sources.document_source import DocumentSource
 from ostra.providers.tokenizers.tokenizer import Tokenizer
 from ostra.repositories.model_index import ChunkWriteIndex
-from ostra.services.indexing_service import run_indexing
+from ostra.services.embedding.embedding_model import EmbeddingModel
+from ostra.services.ingestion.indexing_service import run_indexing
 
 
 class WordTokenizer(Tokenizer):

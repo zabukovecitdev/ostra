@@ -11,8 +11,8 @@ from ostra.repositories.config_repository import load_config
 from ostra.repositories.model_index import ChunkWriteIndex
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.index_session import open_index
-from ostra.services.indexing_service import run_indexing
-from ostra.services.source_factory import build_sources
+from ostra.services.ingestion.indexing_service import run_indexing
+from ostra.services.ingestion.source_factory import build_sources
 
 DEFAULT_SEARCH_LIMIT = 5
 MAX_SHORT_TEXT_CHARACTERS = 300

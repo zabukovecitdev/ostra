@@ -5,8 +5,8 @@ from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.repositories.config_repository import load_config
 from ostra.services.index_session import open_index
-from ostra.services.indexing_service import run_indexing
-from ostra.services.source_factory import build_sources
+from ostra.services.ingestion.indexing_service import run_indexing
+from ostra.services.ingestion.source_factory import build_sources
 
 logger = logging.getLogger(__name__)
 

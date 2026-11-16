@@ -5,7 +5,7 @@ from ostra.models.document_record import DocumentRecord
 from ostra.models.embedded_chunk import EmbeddedChunk
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.repositories.model_index import ChunkWriteIndex
-from ostra.services.text_chunker import TextChunker
+from ostra.services.ingestion.text_chunker import TextChunker
 from ostra.utils.hashing import hash_text
 
 

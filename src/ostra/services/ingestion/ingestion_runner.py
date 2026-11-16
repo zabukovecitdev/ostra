@@ -4,7 +4,7 @@ from collections.abc import Iterator
 
 from ostra.models.document import Document
 from ostra.providers.sources.document_source import DocumentSource
-from ostra.services.ingestion_pipeline import IngestionPipeline
+from ostra.services.ingestion.ingestion_pipeline import IngestionPipeline
 
 DEFAULT_QUEUE_SIZE = 8
 PUT_TIMEOUT_SECONDS = 0.1

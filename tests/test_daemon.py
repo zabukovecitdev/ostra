@@ -5,12 +5,13 @@ import pytest
 
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
-from ostra.models.embedding_model import EmbeddingModel
 from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
-from ostra.services import background_indexing_service, index_session, systemd_service
+from ostra.services import index_session
+from ostra.services.daemon import background_indexing_service, systemd_service
+from ostra.services.embedding.embedding_model import EmbeddingModel
 
-LOGGER_NAME = "ostra.services.background_indexing_service"
+LOGGER_NAME = "ostra.services.daemon.background_indexing_service"
 
 
 def test_index_once__config_fails__logs_error_and_does_not_raise(
