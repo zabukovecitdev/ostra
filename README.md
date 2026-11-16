@@ -115,7 +115,7 @@ The config file is `config.json` in your user config folder, for example `~/.con
 | Key | Default | Meaning |
 |---|---|---|
 | `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. |
-| `directories` | none | Folders to process. Add at least one before the first run. Only top-level `.txt`, `.md` and `.csv` files are read. |
+| `directories` | none | Folders to process. Add at least one before the first run. The top-level `.txt`, `.md` and `.csv` files are read. `ostra index --recursive` reads the subfolders too. |
 | `chunk_size_tokens` | not set | Tokens per chunk. When not set, the default of the embedding model applies (510 for mxbai-embed-large). The value must fit the model input after its special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
 | `embedding_provider` | `ollama` | The service that creates embeddings. Ollama is the only provider now. |
@@ -164,21 +164,25 @@ The SQLite database uses write-ahead logging, so `ostra search` works while the 
 
 ```
 src/ostra/
-├── cli/                   command line entry points: ostra, ostra-daemon (systemd service)
-├── services/              indexing, ingestion pipeline and runner, search, background indexing
+├── cli/                   command line: parser, command handlers, search output, progress bar; ostra-daemon
+├── services/
+│   ├── ingestion/         pipeline, runner, text chunker, source factory, run_indexing
+│   ├── embedding/         EmbeddingModel bundle, provider registry and model factory
+│   ├── daemon/            background indexer loop and systemd service
+│   └── ...                search service, index session
 ├── providers/             adapters to outside systems
 │   ├── sources/           DocumentSource (abstract) and the file system source
 │   ├── embeddings/        EmbeddingProvider (abstract, applies query and document prefixes) and the Ollama provider
 │   └── tokenizers/        Tokenizer (abstract) and the tokenizer-file implementation
 ├── repositories/          storage: SqliteChunkStore with one SqliteModelIndex for each embedding model
 │   └── sqlite/            SQLite + sqlite-vec, versioned migrations, one index for each model
-├── models/                data types, model registry (one spec for each model), EmbeddingModel bundle
+├── models/                data types and the model registry (one spec for each model)
 └── enums/, errors/, utils/, constants.py
 ```
 
 A source reads documents in its own thread and puts them in a bounded queue. The pipeline takes them from the queue, and it does not know where they come from. A new source, such as notes or email, is one new `DocumentSource` class. The document ID is the key of the stored chunks. The file system source uses the file path.
 
-The layers depend on abstract classes. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
+The services depend on abstract classes (`DocumentSource`, `EmbeddingProvider`, `ChunkSearchIndex`, `ChunkWriteIndex`), not on SQLite or Ollama. A new embedding provider is one builder in `PROVIDER_BUILDERS` of `services/embedding/embedding_model_factory.py`. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
 
 ## Development
 
@@ -215,10 +219,9 @@ More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
 
 ## Known limitations
 
-- Only top-level files are read. Subfolders are skipped.
+- Subfolders are read only with `ostra index --recursive`. The background indexer reads the top-level files only.
 - Only plain text formats are read. PDF and Office files are skipped.
 - A moved file is embedded again, and the rows of deleted files are not removed.
-- The vector size is fixed by the migration (1024). A model with another size needs a new migration.
 - The chunk digests are SHA-256 of the chunk text. Identical text in two files is stored once per file path.
 
 ## Roadmap

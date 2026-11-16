@@ -1,6 +1,5 @@
 from collections.abc import Callable
 
-from ostra.models.app_config import AppConfig
 from ostra.providers.sources.document_source import DocumentSource
 from ostra.repositories.model_index import ChunkWriteIndex
 from ostra.services.embedding.embedding_model import EmbeddingModel
@@ -10,7 +9,8 @@ from ostra.services.ingestion.text_chunker import TextChunker
 
 
 def build_pipeline(
-    config: AppConfig,
+    chunk_size_tokens: int | None,
+    chunk_overlap_tokens: int,
     model_index: ChunkWriteIndex,
     embedding_model: EmbeddingModel,
     reindex: bool = False,
@@ -20,7 +20,8 @@ def build_pipeline(
     """Build the pipeline that chunks, embeds and stores documents.
 
     Args:
-        config: The application settings.
+        chunk_size_tokens: The chunk size in tokens. None means the default chunk size of the model.
+        chunk_overlap_tokens: The number of tokens that two neighbor chunks share.
         model_index: The index that stores the chunks of the embedding model.
         embedding_model: The embedding model and its tokenizer.
         reindex: Embed every chunk again, including chunks that are already stored.
@@ -33,8 +34,8 @@ def build_pipeline(
     return IngestionPipeline(
         model_index=model_index,
         chunker=TextChunker(
-            chunk_size_tokens=embedding_model.chunk_size_tokens(config.chunk_size_tokens),
-            chunk_overlap_tokens=config.chunk_overlap_tokens,
+            chunk_size_tokens=embedding_model.chunk_size_tokens(chunk_size_tokens),
+            chunk_overlap_tokens=chunk_overlap_tokens,
             count_tokens=embedding_model.tokenizer.count_tokens,
         ),
         embedding_provider=embedding_model.provider,
@@ -45,7 +46,8 @@ def build_pipeline(
 
 
 def run_indexing(
-    config: AppConfig,
+    chunk_size_tokens: int | None,
+    chunk_overlap_tokens: int,
     model_index: ChunkWriteIndex,
     embedding_model: EmbeddingModel,
     sources: list[DocumentSource],
@@ -56,7 +58,8 @@ def run_indexing(
     """Read the documents of every source and embed and store their chunks.
 
     Args:
-        config: The application settings.
+        chunk_size_tokens: The chunk size in tokens. None means the default chunk size of the model.
+        chunk_overlap_tokens: The number of tokens that two neighbor chunks share.
         model_index: The index that stores the chunks of the embedding model.
         embedding_model: The embedding model and its tokenizer.
         sources: The sources whose documents are indexed, in order.
@@ -68,7 +71,8 @@ def run_indexing(
         The number of documents that were processed.
     """
     pipeline = build_pipeline(
-        config=config,
+        chunk_size_tokens=chunk_size_tokens,
+        chunk_overlap_tokens=chunk_overlap_tokens,
         model_index=model_index,
         embedding_model=embedding_model,
         reindex=reindex,

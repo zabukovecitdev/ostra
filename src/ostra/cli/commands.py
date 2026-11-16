@@ -28,7 +28,8 @@ def run_index(arguments: argparse.Namespace, config: AppConfig, session: IndexSe
     sources = build_sources(config, directories=directories, recursive=arguments.recursive)
     with ProgressReporter(sources) as progress:
         run_indexing(
-            config=config,
+            chunk_size_tokens=config.chunk_size_tokens,
+            chunk_overlap_tokens=config.chunk_overlap_tokens,
             model_index=session.model_index,
             embedding_model=session.embedding_model,
             sources=sources,

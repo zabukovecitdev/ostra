@@ -55,7 +55,8 @@ def _index_directories(config: AppConfig) -> int:
     """
     with open_index(config, create=True) as session:
         return run_indexing(
-            config=config,
+            chunk_size_tokens=config.chunk_size_tokens,
+            chunk_overlap_tokens=config.chunk_overlap_tokens,
             model_index=session.model_index,
             embedding_model=session.embedding_model,
             sources=build_sources(config),

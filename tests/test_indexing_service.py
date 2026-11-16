@@ -2,7 +2,6 @@ from pathlib import Path
 
 from conftest import make_fake_model
 
-from ostra.models.app_config import AppConfig
 from ostra.models.document import Document
 from ostra.providers.sources.document_source import DocumentSource
 from ostra.repositories.model_index import ChunkWriteIndex
@@ -42,7 +41,8 @@ def test_run_indexing__two_custom_sources__indexes_the_documents_of_both(tmp_pat
     index = RecordingIndex()
 
     processed = run_indexing(
-        config=AppConfig(database_path=tmp_path / "db"),
+        chunk_size_tokens=None,
+        chunk_overlap_tokens=0,
         model_index=index,
         embedding_model=make_fake_model(),
         sources=[ListSource("one two"), ListSource("three")],
