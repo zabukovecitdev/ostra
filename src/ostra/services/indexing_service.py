@@ -1,13 +1,11 @@
 from collections.abc import Callable
 from functools import partial
-from pathlib import Path
 
 from tqdm import tqdm
 
 from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model import EmbeddingModel
 from ostra.providers.sources.document_source import DocumentSource
-from ostra.providers.sources.file_system_source import FileSystemSource
 from ostra.repositories.model_index import ChunkWriteIndex
 from ostra.services.ingestion_pipeline import IngestionPipeline
 from ostra.services.ingestion_runner import run_ingestion
@@ -53,10 +51,9 @@ def run_indexing(
     config: AppConfig,
     model_index: ChunkWriteIndex,
     embedding_model: EmbeddingModel,
-    directories: list[Path] | None = None,
+    sources: list[DocumentSource],
     reindex: bool = False,
     on_document_processed: Callable[[str], None] | None = None,
-    recursive: bool = False,
     show_progress: bool = False,
 ) -> None:
     """Read the documents of every source and embed and store their chunks.
@@ -65,15 +62,11 @@ def run_indexing(
         config: The application settings.
         model_index: The index that stores the chunks of the embedding model.
         embedding_model: The embedding model and its tokenizer.
-        directories: Folders to index. Use the configured folders when None.
+        sources: The sources whose documents are indexed, in order.
         reindex: Embed every chunk again, including chunks that are already stored.
         on_document_processed: Callback that receives the ID of each processed document.
-        recursive: Index the files in the subfolders of the folders too.
         show_progress: Show a progress bar on the terminal, with the count of documents and the current document.
     """
-    sources: list[DocumentSource] = [
-        FileSystemSource(directories=directories or config.directories, recursive=recursive)
-    ]
     progress = _start_progress(sources) if show_progress else None
     pipeline = build_pipeline(
         config=config,

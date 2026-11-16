@@ -9,6 +9,7 @@ from ostra.repositories.config_repository import load_config
 from ostra.repositories.status_repository import STATUS_PATH, write_status
 from ostra.services.index_session import open_index
 from ostra.services.indexing_service import run_indexing
+from ostra.services.source_factory import build_sources
 
 logger = logging.getLogger(__name__)
 
@@ -73,5 +74,6 @@ def _index_directories(config: AppConfig, processed_files: list[str]) -> None:
             config=config,
             model_index=session.model_index,
             embedding_model=session.embedding_model,
+            sources=build_sources(config),
             on_document_processed=processed_files.append,
         )

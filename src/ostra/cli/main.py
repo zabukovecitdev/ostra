@@ -11,6 +11,7 @@ from ostra.repositories.model_index import ChunkWriteIndex
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.index_session import open_index
 from ostra.services.indexing_service import run_indexing
+from ostra.services.source_factory import build_sources
 
 DEFAULT_SEARCH_LIMIT = 5
 MAX_SHORT_TEXT_CHARACTERS = 300
@@ -86,9 +87,8 @@ def _index_files(arguments, config, model_index: ChunkWriteIndex, embedding_mode
         config=config,
         model_index=model_index,
         embedding_model=embedding_model,
-        directories=directories,
+        sources=build_sources(config, directories=directories, recursive=arguments.recursive),
         reindex=arguments.reindex,
-        recursive=arguments.recursive,
         show_progress=True,
     )
 

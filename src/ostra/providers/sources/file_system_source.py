@@ -22,6 +22,11 @@ class FileSystemSource(DocumentSource):
         self._directories = directories
         self._recursive = recursive
 
+    @property
+    def directories(self) -> list[Path]:
+        """Return the folders that the source reads."""
+        return self._directories
+
     def count_documents(self) -> int | None:
         """Count the text files that stream_documents would yield, without reading them.
 

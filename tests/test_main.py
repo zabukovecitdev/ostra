@@ -122,7 +122,9 @@ def test_main__directory_flag__processes_given_folder_instead_of_config(
         "load_config",
         lambda: AppConfig(database_path=tmp_path / "ostra.db", directories=[configured]),
     )
-    monkeypatch.setattr(main, "run_indexing", lambda **kwargs: indexed_directories.append(kwargs["directories"]))
+    monkeypatch.setattr(
+        main, "run_indexing", lambda **kwargs: indexed_directories.append(kwargs["sources"][0].directories)
+    )
 
     main.main(["index", "--directory", str(given)])
 
