@@ -7,6 +7,7 @@ from ostra.cli import configure_logging
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.evaluation.evaluation_cases import load_evaluation_cases
 from ostra.evaluation.retrieval_evaluator import RetrievalEvaluator
+from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS
 from ostra.repositories.config_repository import load_config
 from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
@@ -31,7 +32,7 @@ def main(argv: list[str] | None = None):
         parser.print_help()
         return
 
-    config = load_config()
+    config = _apply_database_override(load_config(), arguments.database)
     with open_index(config, model_id=arguments.model, create=arguments.command == "index") as session:
         if arguments.command == "eval":
             _print_evaluation(
@@ -62,6 +63,22 @@ def main(argv: list[str] | None = None):
                 model_index=session.model_index,
                 embedding_model=session.embedding_model,
             )
+
+
+def _apply_database_override(config: AppConfig, database: Path | None) -> AppConfig:
+    """Replace the database location of the config file with the one given on the command line.
+
+    Args:
+        config: The application settings.
+        database: The database file from the --database option, or None to keep the configured one.
+
+    Returns:
+        The settings with the database path of the option, or the unchanged settings.
+    """
+    if database is None:
+        return config
+
+    return config.model_copy(update={"database_path": database.expanduser()})
 
 
 def _index_files(arguments, config, model_index: SqliteModelIndex, embedding_model) -> None:
@@ -235,6 +252,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--model",
         choices=list(EMBEDDING_MODELS),
         help="Embedding model to use. Overrides embedding_model in the config file.",
+    )
+
+    shared.add_argument(
+        "--database",
+        type=Path,
+        metavar="PATH",
+        help="SQLite database file to use. Overrides database_path in the config file.",
     )
 
     commands = parser.add_subparsers(dest="command", metavar="COMMAND")
