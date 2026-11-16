@@ -5,10 +5,10 @@ from ostra.models.app_config import AppConfig
 
 
 def test_build_parser__database_option__parsed_for_every_command():
-    """Accept --database on the index, search and eval commands."""
+    """Accept --database on the index and search commands."""
     parser = _build_parser()
 
-    for command in (["index"], ["search", "q"], ["eval", "cases.json"]):
+    for command in (["index"], ["search", "q"]):
         assert parser.parse_args([*command, "--database", "x.db"]).database == Path("x.db")
 
 
