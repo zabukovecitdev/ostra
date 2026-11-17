@@ -5,10 +5,10 @@ from pathlib import Path
 
 from platformdirs import user_config_path
 from pydantic import ValidationError
-from pydantic_settings import EnvSettingsSource
 
-from ostra.constants import APP_NAME, OWNER_ONLY_DIRECTORY_MODE, OWNER_ONLY_FILE_MODE
+from ostra.constants import APP_NAME
 from ostra.models.app_config import AppConfig
+from ostra.utils.owner_only import ensure_owner_only_directory, open_owner_only_file
 
 # Earlier versions kept the config file here. An existing file at this path stays in use.
 LEGACY_CONFIG_PATH = Path.home() / "ostra" / "config.json"
@@ -60,10 +60,8 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     if not isinstance(file_values, dict):
         raise ValueError(f"Config file must contain a JSON object. Path={config_path}")
 
-    # Keyword arguments outrank environment variables, so merge the environment over the file values here.
-    environment_values = EnvSettingsSource(AppConfig)()
     try:
-        return AppConfig(**{**file_values, **environment_values})
+        return AppConfig(**file_values)
     except ValidationError as error:
         raise ValueError(f"Config file has invalid settings. Path={config_path}\n{error}") from error
 
@@ -104,10 +102,8 @@ def _write_config_file(config_path: Path, values: dict) -> None:
         config_path: Location of the JSON config file.
         values: The JSON object to write.
     """
-    config_path.parent.mkdir(mode=OWNER_ONLY_DIRECTORY_MODE, parents=True, exist_ok=True)
-    config_path.parent.chmod(OWNER_ONLY_DIRECTORY_MODE)
-
-    file_descriptor = os.open(config_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, OWNER_ONLY_FILE_MODE)
+    ensure_owner_only_directory(config_path.parent)
+    file_descriptor = open_owner_only_file(config_path, truncate=True)
     with os.fdopen(file_descriptor, "w") as config_file:
         json.dump(values, config_file, indent=2)
         config_file.write("\n")

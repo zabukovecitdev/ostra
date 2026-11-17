@@ -1,11 +1,14 @@
 from pathlib import Path
 
 import pytest
+from conftest import ConstantEmbeddingProvider
 
+from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.providers.tokenizers.hugging_face_tokenizer import HuggingFaceTokenizer
-from ostra.services.embedding_model_factory import build_embedding_model, ollama_settings
+from ostra.services.embedding import embedding_model_factory
+from ostra.services.embedding.embedding_model_factory import build_embedding_model, ollama_settings
 
 
 def test_ollama_settings__base_url_in_config__overrides_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -59,3 +62,27 @@ def test_build_embedding_model__unknown_model_id__raises_value_error(tmp_path: P
 
     with pytest.raises(ValueError, match="not supported"):
         build_embedding_model(AppConfig(database_path=tmp_path / "db"), model_id="magic")
+
+
+def test_build_embedding_model__provider_without_builder__raises_value_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Refuse a provider that has no builder in the registry."""
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    monkeypatch.setattr(embedding_model_factory, "PROVIDER_BUILDERS", {})
+
+    with pytest.raises(ValueError, match="provider is not supported"):
+        build_embedding_model(AppConfig(database_path=tmp_path / "db"))
+
+
+def test_build_embedding_model__builder_registered__uses_it_for_the_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Take the provider from the registered builder."""
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    provider = ConstantEmbeddingProvider(MXBAI_EMBED_LARGE)
+    monkeypatch.setattr(
+        embedding_model_factory, "PROVIDER_BUILDERS", {EmbeddingProviderName.OLLAMA: lambda spec, config: provider}
+    )
+
+    assert build_embedding_model(AppConfig(database_path=tmp_path / "db")).provider is provider

@@ -1,18 +1,10 @@
 import pytest
-from conftest import make_spec
+from conftest import WordTokenizer, make_spec
 
-from ostra.models.embedding_model import EmbeddingModel
 from ostra.models.vector import Vector
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.providers.tokenizers.tokenizer import Tokenizer
-
-
-class FakeTokenizer(Tokenizer):
-    """Count each word as one token."""
-
-    def count_tokens(self, text: str) -> int:
-        """Return the number of words in the text."""
-        return len(text.split())
+from ostra.services.embedding.embedding_model import EmbeddingModel
 
 
 class FakeProvider(EmbeddingProvider):
@@ -29,7 +21,7 @@ class FakeProvider(EmbeddingProvider):
 
 def make_model(**overrides) -> EmbeddingModel:
     spec = make_spec("m", 2, **overrides)
-    return EmbeddingModel(spec=spec, provider=FakeProvider(spec), tokenizer=FakeTokenizer())
+    return EmbeddingModel(spec=spec, provider=FakeProvider(spec), tokenizer=WordTokenizer())
 
 
 def test_embedding_provider__instantiated_directly__raises_type_error():

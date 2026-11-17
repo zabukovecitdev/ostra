@@ -1,12 +1,13 @@
 from pathlib import Path
 
-from ostra.cli.main import _apply_database_override, _build_parser
+from ostra.cli.main import _apply_database_override
+from ostra.cli.parser import build_parser
 from ostra.models.app_config import AppConfig
 
 
-def test_build_parser__database_option__parsed_for_every_command():
+def testbuild_parser__database_option__parsed_for_every_command():
     """Accept --database on the index and search commands."""
-    parser = _build_parser()
+    parser = build_parser()
 
     for command in (["index"], ["search", "q"]):
         assert parser.parse_args([*command, "--database", "x.db"]).database == Path("x.db")

@@ -30,7 +30,6 @@ Everything runs on your machine. No text leaves it.
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Background indexing (Linux)](#background-indexing-linux)
-- [Desktop interface](#desktop-interface)
 - [Architecture](#architecture)
 - [Development](#development)
 - [Performance](#performance)
@@ -44,7 +43,7 @@ Everything runs on your machine. No text leaves it.
 - **Resumable ingestion.** Each chunk is stored under its content digest. A rerun skips chunks that are already embedded, so an interrupted run continues where it stopped.
 - **Local embeddings** through [Ollama](https://ollama.com), with `mxbai-embed-large` (default) or `bge-m3` for multilingual text.
 - **One index for each model.** Vectors of two models never mix, so you can compare models on the same files.
-- **Vector search** with cosine distance, from the command line, as JSON, or in a local web interface.
+- **Vector search** with cosine distance, from the command line, with plain text or JSON output.
 - **SQLite storage with `sqlite-vec`.** One database holds an index for each embedding model, with versioned migrations.
 - **Background indexing** as a systemd user service.
 - **Owner-only file permissions** on the database, the config file and their folders. Linux and macOS apply these modes. On Windows they have no effect.
@@ -85,10 +84,10 @@ Everything runs on your machine. No text leaves it.
 
 ## Installation
 
-Install the command line tools and the web interface from GitHub:
+Install the command line tools from GitHub:
 
 ```bash
-uv tool install 'ostra[gui] @ git+https://github.com/zabukovecitdev/ostra'
+uv tool install 'ostra @ git+https://github.com/zabukovecitdev/ostra'
 ```
 
 
@@ -97,14 +96,14 @@ For development, clone the repository instead:
 ```bash
 git clone https://github.com/zabukovecitdev/ostra.git
 cd ostra
-uv sync --extra gui
+uv sync
 ```
 
 ## Quick start
 
 ```bash
 uv sync
-# add your folders to "directories" in the config file, or use the config page of ostra-app
+# add your folders to "directories" in the config file
 make run                      # process the configured folders
 make search QUERY="solar system" LIMIT=3
 ```
@@ -116,7 +115,7 @@ The config file is `config.json` in your user config folder, for example `~/.con
 | Key | Default | Meaning |
 |---|---|---|
 | `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. |
-| `directories` | none | Folders to process. Add at least one before the first run. Only top-level `.txt`, `.md` and `.csv` files are read. |
+| `directories` | none | Folders to process. Add at least one before the first run. The top-level `.txt`, `.md` and `.csv` files are read. `ostra index --recursive` reads the subfolders too. |
 | `chunk_size_tokens` | not set | Tokens per chunk. When not set, the default of the embedding model applies (510 for mxbai-embed-large). The value must fit the model input after its special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
 | `embedding_provider` | `ollama` | The service that creates embeddings. Ollama is the only provider now. |
@@ -151,7 +150,7 @@ make help             # list every target
 
 ## Background indexing (Linux)
 
-`ostra-daemon` indexes the configured folders in a loop. It reads the config file again on each run. It writes the result of the last run to `status.json` in the user data folder.
+`ostra-daemon` indexes the configured folders in a loop. It reads the config file again on each run. It logs the result of each run.
 
 | Command | Effect |
 |---|---|
@@ -161,41 +160,34 @@ make help             # list every target
 
 The SQLite database uses write-ahead logging, so `ostra search` works while the daemon writes.
 
-## Desktop interface
-
-A local web interface has a search page and a config page. The config page edits the folders, database path and chunk sizes. It also shows the result of the last background run. The **Index now** button starts one indexing run at once with the saved settings, and it shows the result when the run ends.
-
-```bash
-ostra-app                     # opens http://127.0.0.1:8765
-```
-
-On the first start, with no folders set, a welcome page shows one button that adds folders. It also shows whether Ollama and the model are ready, with a link to install them when they are not. The config page has a folder picker. The interface listens on the local machine only, so the picker lists the folders of the computer that runs it.
-
 ## Architecture
 
 ```
 src/ostra/
-├── cli/                   command line entry points: ostra, ostra-daemon (systemd service)
-├── gui/                   local web interface (NiceGUI)
-├── services/              indexing, ingestion pipeline and runner, search, background indexing, Ollama status
+├── cli/                   command line: parser, command handlers, search output, progress bar; ostra-daemon
+├── services/
+│   ├── ingestion/         pipeline, runner, text chunker, source factory, run_indexing
+│   ├── embedding/         EmbeddingModel bundle, provider registry and model factory
+│   ├── daemon/            background indexer loop and systemd service
+│   └── ...                search service, index session
 ├── providers/             adapters to outside systems
 │   ├── sources/           DocumentSource (abstract) and the file system source
 │   ├── embeddings/        EmbeddingProvider (abstract, applies query and document prefixes) and the Ollama provider
 │   └── tokenizers/        Tokenizer (abstract) and the tokenizer-file implementation
 ├── repositories/          storage: SqliteChunkStore with one SqliteModelIndex for each embedding model
 │   └── sqlite/            SQLite + sqlite-vec, versioned migrations, one index for each model
-├── models/                data types, model registry (one spec for each model), EmbeddingModel bundle
+├── models/                data types and the model registry (one spec for each model)
 └── enums/, errors/, utils/, constants.py
 ```
 
 A source reads documents in its own thread and puts them in a bounded queue. The pipeline takes them from the queue, and it does not know where they come from. A new source, such as notes or email, is one new `DocumentSource` class. The document ID is the key of the stored chunks. The file system source uses the file path.
 
-The layers depend on abstract classes. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
+The services depend on abstract classes (`DocumentSource`, `EmbeddingProvider`, `ChunkSearchIndex`, `ChunkWriteIndex`), not on SQLite or Ollama. A new embedding provider is one builder in `PROVIDER_BUILDERS` of `services/embedding/embedding_model_factory.py`. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
 
 ## Development
 
 ```bash
-uv sync --extra gui
+uv sync
 make hooks            # install git hooks: checks on commit, tests on push
 make check            # lint, format check, type check and tests
 ```
@@ -227,10 +219,9 @@ More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
 
 ## Known limitations
 
-- Only top-level files are read. Subfolders are skipped.
+- Subfolders are read only with `ostra index --recursive`. The background indexer reads the top-level files only.
 - Only plain text formats are read. PDF and Office files are skipped.
 - A moved file is embedded again, and the rows of deleted files are not removed.
-- The vector size is fixed by the migration (1024). A model with another size needs a new migration.
 - The chunk digests are SHA-256 of the chunk text. Identical text in two files is stored once per file path.
 
 ## Roadmap

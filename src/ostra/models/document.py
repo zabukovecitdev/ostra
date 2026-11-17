@@ -11,6 +11,5 @@ class Document:
 
     source: str
     document_id: str
-    version: str
     title: str
     text: str

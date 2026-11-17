@@ -7,9 +7,10 @@ from ostra.models.chunk_match import ChunkMatch
 from ostra.models.document_record import DocumentRecord
 from ostra.models.embedded_chunk import EmbeddedChunk
 from ostra.models.vector import Vector
+from ostra.repositories.model_index import ModelIndex
 
 
-class SqliteModelIndex:
+class SqliteModelIndex(ModelIndex):
     """Keep the chunks of one embedding model in a chunk table and a vec0 vector table.
 
     The vector table uses the chunk ID of the chunk table as its row ID.

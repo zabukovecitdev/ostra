@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from ostra.providers.sources.file_system_source import SOURCE_NAME, FileSystemSource
-from ostra.utils.hashing import hash_file
 
 
 def read_texts(source: FileSystemSource) -> list[str]:
@@ -24,7 +23,7 @@ def test_stream_documents__directory_with_files__yields_text_files_in_sorted_ord
 
 
 def test_stream_documents__file__fills_every_field_of_the_document(tmp_path: Path):
-    """Use the path as document ID, the byte digest as version, the file name as title and the text of the file."""
+    """Use the path as document ID, the file name as title and the text of the file."""
     file_path = tmp_path / "a.txt"
     file_path.write_text("first\nsecond line\n")
 
@@ -32,7 +31,6 @@ def test_stream_documents__file__fills_every_field_of_the_document(tmp_path: Pat
 
     assert document.source == SOURCE_NAME
     assert document.document_id == str(file_path)
-    assert document.version == hash_file(file_path)
     assert document.title == "a.txt"
     assert document.text == "first\nsecond line\n"
 

@@ -4,13 +4,13 @@ from collections.abc import Iterator
 
 from ostra.models.document import Document
 from ostra.providers.sources.document_source import DocumentSource
-from ostra.services.ingestion_pipeline import IngestionPipeline
+from ostra.services.ingestion.ingestion_pipeline import IngestionPipeline
 
 DEFAULT_QUEUE_SIZE = 8
 PUT_TIMEOUT_SECONDS = 0.1
 
 
-def run_ingestion(source: DocumentSource, pipeline: IngestionPipeline, queue_size: int = DEFAULT_QUEUE_SIZE) -> None:
+def run_ingestion(source: DocumentSource, pipeline: IngestionPipeline, queue_size: int = DEFAULT_QUEUE_SIZE) -> int:
     """Read the documents of a source in a thread and process them in the calling thread through a queue.
 
     The queue is bounded, so the source waits when the pipeline is slow and does not fill the memory.
@@ -20,6 +20,9 @@ def run_ingestion(source: DocumentSource, pipeline: IngestionPipeline, queue_siz
         source: The source that offers the documents.
         pipeline: The pipeline that processes them.
         queue_size: The largest number of documents that wait in the queue.
+
+    Returns:
+        The number of documents that the pipeline processed.
 
     Raises:
         Exception: The error of the source, after the pipeline processed the documents that came before it.
@@ -31,13 +34,15 @@ def run_ingestion(source: DocumentSource, pipeline: IngestionPipeline, queue_siz
     producer = threading.Thread(target=_produce, args=(source, documents, stop, failures), daemon=True)
     producer.start()
     try:
-        pipeline.process_documents(_drain(documents))
+        processed = pipeline.process_documents(_drain(documents))
     finally:
         stop.set()
         producer.join()
 
     if failures:
         raise failures[0]
+
+    return processed
 
 
 def _produce(

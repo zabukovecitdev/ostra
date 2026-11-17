@@ -4,8 +4,8 @@ from ostra.models.document import Document
 from ostra.models.document_record import DocumentRecord
 from ostra.models.embedded_chunk import EmbeddedChunk
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
-from ostra.repositories.sqlite.sqlite_model_index import SqliteModelIndex
-from ostra.services.text_chunker import TextChunker
+from ostra.repositories.model_index import ChunkWriteIndex
+from ostra.services.ingestion.text_chunker import TextChunker
 from ostra.utils.hashing import hash_text
 
 
@@ -17,7 +17,7 @@ class IngestionPipeline:
 
     def __init__(
         self,
-        model_index: SqliteModelIndex,
+        model_index: ChunkWriteIndex,
         chunker: TextChunker,
         embedding_provider: EmbeddingProvider,
         reindex: bool,
@@ -31,7 +31,7 @@ class IngestionPipeline:
         self._on_document_processed = on_document_processed
         self._on_document_started = on_document_started
 
-    def process_documents(self, documents: Iterable[Document]) -> None:
+    def process_documents(self, documents: Iterable[Document]) -> int:
         """Process each document, one at a time, in the order that the iterable gives them.
 
         Call the on_document_started callback before each document and the on_document_processed callback after it,
@@ -39,13 +39,20 @@ class IngestionPipeline:
 
         Args:
             documents: The documents to process.
+
+        Returns:
+            The number of documents that were processed.
         """
+        processed = 0
         for document in documents:
             if self._on_document_started is not None:
                 self._on_document_started(document.document_id)
             self._process_document(document)
             if self._on_document_processed is not None:
                 self._on_document_processed(document.document_id)
+            processed += 1
+
+        return processed
 
     def _process_document(self, document: Document) -> None:
         """Embed and store each chunk whose digest is not stored, then delete the chunks that are gone.
