@@ -21,3 +21,6 @@ mutants/
 # IDE and local tool state
 .idea/
 .awb/
+
+# Eval databases, rebuilt by every make evals run
+evals/runs/*/ostra.db*

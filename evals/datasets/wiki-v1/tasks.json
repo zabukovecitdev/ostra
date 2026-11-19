@@ -1,0 +1,182 @@
+[
+  {
+    "id": 1,
+    "question": "Which king signed the treaty of Saint-Clair-sur-Epte with Rollo?",
+    "expected": "normans.txt",
+    "answer": "King Charles III"
+  },
+  {
+    "id": 2,
+    "question": "In what year did the invasion at Bannow Bay in Ireland take place?",
+    "expected": "normans.txt",
+    "answer": "1169"
+  },
+  {
+    "id": 3,
+    "question": "What was the plot to take power from the French House of Guise called?",
+    "expected": "huguenots.txt",
+    "answer": "Amboise plot"
+  },
+  {
+    "id": 4,
+    "question": "About how many Walloons and Huguenots emigrated to England and Ireland?",
+    "expected": "huguenots.txt",
+    "answer": "50,000"
+  },
+  {
+    "id": 5,
+    "question": "What did James Watt add to his engine in 1788 to regulate its speed?",
+    "expected": "steam_engine.txt",
+    "answer": "centrifugal governor"
+  },
+  {
+    "id": 6,
+    "question": "Which Spanish inventor received patents in 1606 for a water pump that drained flooded mines?",
+    "expected": "steam_engine.txt",
+    "answer": "Jerónimo de Ayanz y Beaumont"
+  },
+  {
+    "id": 7,
+    "question": "How many elements did Aristotle believe the terrestrial sphere was made of?",
+    "expected": "force.txt",
+    "answer": "four"
+  },
+  {
+    "id": 8,
+    "question": "According to Newton's first law, what changes the rotational inertia of a body?",
+    "expected": "force.txt",
+    "answer": "an unbalanced torque"
+  },
+  {
+    "id": 9,
+    "question": "How is oxygen produced from carbon dioxide on other planets of the solar system?",
+    "expected": "oxygen.txt",
+    "answer": "ultraviolet radiation"
+  },
+  {
+    "id": 10,
+    "question": "Why do cold polar waters support more marine life than warm waters?",
+    "expected": "oxygen.txt",
+    "answer": "higher oxygen content"
+  },
+  {
+    "id": 11,
+    "question": "What did the Mongol army throw over the city walls with catapults?",
+    "expected": "black_death.txt",
+    "answer": "infected corpses"
+  },
+  {
+    "id": 12,
+    "question": "How much of the population of Paris was killed by the plague?",
+    "expected": "black_death.txt",
+    "answer": "half of its 100,000 people"
+  },
+  {
+    "id": 13,
+    "question": "How does a lack of sleep affect antibody production?",
+    "expected": "immune_system.txt",
+    "answer": "diminished immune response and lower antibody production"
+  },
+  {
+    "id": 14,
+    "question": "Which gene converts calcidiol into calcitriol?",
+    "expected": "immune_system.txt",
+    "answer": "CYP27B1"
+  },
+  {
+    "id": 15,
+    "question": "In what year did Harvard and Radcliffe merge their admissions?",
+    "expected": "harvard_university.txt",
+    "answer": "1977"
+  },
+  {
+    "id": 16,
+    "question": "How many U.S. presidents are alumni of Harvard?",
+    "expected": "harvard_university.txt",
+    "answer": "eight"
+  },
+  {
+    "id": 17,
+    "question": "Which meteorologist known for his tornado research was a member of the faculty?",
+    "expected": "university_of_chicago.txt",
+    "answer": "Ted Fujita"
+  },
+  {
+    "id": 18,
+    "question": "What is the name of the fitness-based winter festival held every January?",
+    "expected": "university_of_chicago.txt",
+    "answer": "Kuviasungnerk/Kangeiko"
+  },
+  {
+    "id": 19,
+    "question": "Into which city across the Mexican border does the megaregion extend?",
+    "expected": "southern_california.txt",
+    "answer": "Tijuana"
+  },
+  {
+    "id": 20,
+    "question": "What is the short name of the annual yacht race from Los Angeles to Hawaii?",
+    "expected": "southern_california.txt",
+    "answer": "Transpac"
+  },
+  {
+    "id": 21,
+    "question": "Which is the largest city in the United States not linked to an interstate highway?",
+    "expected": "fresno_california.txt",
+    "answer": "Fresno"
+  },
+  {
+    "id": 22,
+    "question": "Who designed the golf course at the Sunnyside Country Club?",
+    "expected": "fresno_california.txt",
+    "answer": "William P. Bell"
+  },
+  {
+    "id": 23,
+    "question": "How many tons of carbon does the rainforest absorb in a typical year?",
+    "expected": "amazon_rainforest.txt",
+    "answer": "1.5 gigatons"
+  },
+  {
+    "id": 24,
+    "question": "What percentage of the cleared land in the Amazon is used for livestock?",
+    "expected": "amazon_rainforest.txt",
+    "answer": "91%"
+  },
+  {
+    "id": 25,
+    "question": "When did Rajendra Pachauri resign as chair of the panel?",
+    "expected": "ipcc.txt",
+    "answer": "February 2015"
+  },
+  {
+    "id": 26,
+    "question": "How much did the Third Assessment Report project sea levels to rise between 1990 and 2100?",
+    "expected": "ipcc.txt",
+    "answer": "9–88 cm"
+  },
+  {
+    "id": 27,
+    "question": "What concept did Paul Baran develop while researching at RAND?",
+    "expected": "packet_switching.txt",
+    "answer": "distributed adaptive message block switching"
+  },
+  {
+    "id": 28,
+    "question": "What was the name of the first Internet2 Network, built in partnership with Qwest?",
+    "expected": "packet_switching.txt",
+    "answer": "Abilene"
+  },
+  {
+    "id": 29,
+    "question": "Which theorem says an arithmetic progression contains infinitely many primes when its terms are coprime?",
+    "expected": "prime_number.txt",
+    "answer": "Dirichlet's theorem"
+  },
+  {
+    "id": 30,
+    "question": "What did Olivier Messiaen say inspired his compositions based on prime numbers?",
+    "expected": "prime_number.txt",
+    "answer": "the movements of nature"
+  }
+]

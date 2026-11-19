@@ -32,6 +32,7 @@ Everything runs on your machine. No text leaves it.
 - [Background indexing (Linux)](#background-indexing-linux)
 - [Architecture](#architecture)
 - [Development](#development)
+- [Evals](#evals)
 - [Performance](#performance)
 - [Known limitations](#known-limitations)
 - [Roadmap](#roadmap)
@@ -199,10 +200,15 @@ make check            # lint, format check, type check and tests
 | `make format` | Format the code with ruff |
 | `make typecheck` | Check the types with mypy |
 | `make check` | Run all of the checks above |
+| `make evals v1-baseline` | Run the retrieval evals of the run folder `evals/runs/v1-baseline` (needs Ollama) |
 
 The suite runs 219 tests. The tests do not call Ollama: they use a fake embedding model and a local tokenizer file.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
+
+## Evals
+
+`make evals <run>` indexes the dataset that `evals/runs/<run>/config.json` names into a new database in the run folder, asks every question of the dataset and writes the rank of the expected file to `output.json`. Datasets (`evals/datasets/`) hold the documents and questions and stay fixed; runs (`evals/runs/`) hold the settings and results, so runs on the same dataset compare side by side. See [evals/README.md](evals/README.md).
 
 ## Performance
 

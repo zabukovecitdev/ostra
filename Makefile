@@ -5,10 +5,17 @@ DIRECTORY_FLAG = $(if $(DIRECTORY),--directory $(DIRECTORY))
 # Set RECURSIVE=1 to index the files in subfolders too, e.g. make run DIRECTORY=~/notes RECURSIVE=1
 RECURSIVE ?=
 RECURSIVE_FLAG = $(if $(RECURSIVE),--recursive)
+# The run folder of make evals, e.g. make evals v1-baseline. The word after evals is the run, not a target.
+ifeq (evals,$(firstword $(MAKECMDGOALS)))
+  RUN ?= $(word 2,$(MAKECMDGOALS))
+  ifneq ($(word 2,$(MAKECMDGOALS)),)
+    $(eval $(word 2,$(MAKECMDGOALS)):;@:)
+  endif
+endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install uninstall run reindex search test lint format typecheck check hooks
+.PHONY: help install uninstall run reindex search evals test lint format typecheck check hooks
 
 help: ## Show the available targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
@@ -28,6 +35,10 @@ reindex: ## Embed every chunk again, or DIRECTORY when set
 search: ## Print the stored chunks closest to QUERY, e.g. make search QUERY="solar system" LIMIT=3
 	@test -n "$(QUERY)" || { echo 'Set QUERY, e.g. make search QUERY="solar system"'; exit 1; }
 	uv run ostra search "$(QUERY)" --limit $(LIMIT)
+
+evals: ## Run an eval run folder against its dataset, e.g. make evals v1-baseline
+	@test -n "$(RUN)" || { echo 'Name a run folder of evals/runs, e.g. make evals v1-baseline'; ls evals/runs; exit 1; }
+	uv run python -m evals.runner $(RUN)
 
 test: ## Run the test suite
 	uv run pytest
