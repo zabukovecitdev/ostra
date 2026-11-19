@@ -1,17 +1,21 @@
-"""Run the retrieval evals of one version folder.
+"""Run the retrieval evals of one run folder against its dataset.
 
-A version folder holds the setup of one eval run and its results, so that runs can be compared:
+A dataset holds the documents and the questions. It stays the same once runs use it, so that their results compare:
 
-    evals/<version>/config.json   the settings of the run (model, chunk size, search limit)
-    evals/<version>/tasks.json    the questions and the file that answers each one
-    evals/<version>/data/         the documents to index
-    evals/<version>/ostra.db      the database of the run, written by the run
-    evals/<version>/output.json   the results of the run, written by the run
+    evals/datasets/<dataset>/tasks.json   the questions and the file that answers each one
+    evals/datasets/<dataset>/data/        the documents to index
 
-Run it with `make evals <version>`, for example `make evals v1`.
+A run holds the settings of one experiment and its results:
+
+    evals/runs/<run>/config.json          the dataset name and the settings (model, chunk size, search limit)
+    evals/runs/<run>/ostra.db             the database of the run, written by the run
+    evals/runs/<run>/output.json          the results of the run, written by the run
+
+Run it with `make evals <run>`, for example `make evals v1-baseline`.
 """
 
 import argparse
+import hashlib
 import json
 import statistics
 import sys
@@ -31,6 +35,8 @@ from ostra.services.ingestion.indexing_service import run_indexing
 from ostra.services.ingestion.source_factory import build_sources
 
 EVALS_DIRECTORY = Path(__file__).parent
+DATASETS_DIRECTORY = EVALS_DIRECTORY / "datasets"
+RUNS_DIRECTORY = EVALS_DIRECTORY / "runs"
 CONFIG_FILE = "config.json"
 TASKS_FILE = "tasks.json"
 DATA_DIRECTORY = "data"
@@ -55,10 +61,12 @@ class EvalTask:
 
 @dataclass(frozen=True)
 class EvalSettings:
-    """Hold the settings of one version folder."""
+    """Hold the settings of one run."""
 
     app_config: AppConfig
     search_limit: int
+    dataset_name: str
+    dataset_directory: Path
 
 
 @dataclass(frozen=True)
@@ -75,72 +83,107 @@ class TaskResult:
     top_documents: list[str]
 
 
-def resolve_version_directory(name: str) -> Path:
-    """Find the version folder from the name on the command line.
+def resolve_run_directory(name: str) -> Path:
+    """Find the run folder from the name on the command line.
 
     Args:
-        name: A folder name inside the evals folder, such as v1, or a path to a version folder.
+        name: A folder name inside evals/runs, such as v1-baseline, or a path to a run folder.
 
     Returns:
-        The version folder.
+        The run folder.
 
     Raises:
-        FileNotFoundError: When neither the path nor the folder inside the evals folder exists.
+        FileNotFoundError: When neither the path nor the folder inside evals/runs has a config.json.
     """
-    for candidate in (Path(name), EVALS_DIRECTORY / name):
-        if (candidate / TASKS_FILE).is_file():
+    for candidate in (Path(name), RUNS_DIRECTORY / name):
+        if (candidate / CONFIG_FILE).is_file():
             return candidate.resolve()
 
-    raise FileNotFoundError(f"Version folder with a {TASKS_FILE} not found. Name={name}")
+    raise FileNotFoundError(f"Run folder with a {CONFIG_FILE} not found. Name={name}")
 
 
-def load_settings(version_directory: Path) -> EvalSettings:
-    """Read the config file of a version folder.
+def load_settings(run_directory: Path, datasets_directory: Path = DATASETS_DIRECTORY) -> EvalSettings:
+    """Read the config file of a run folder and find its dataset.
 
-    The database and the data folder always come from the version folder, so a run never touches the database of
-    the config file in the home folder, even when OSTRA_ environment variables are set.
+    The database always lives in the run folder and the documents always come from the dataset, so a run never
+    touches the database of the config file in the home folder, even when OSTRA_ environment variables are set.
 
     Args:
-        version_directory: The version folder.
+        run_directory: The run folder.
+        datasets_directory: The folder that holds the datasets.
 
     Returns:
         The settings of the run.
+
+    Raises:
+        ValueError: When the config file names no dataset, or the dataset has no tasks.json.
     """
-    config_path = version_directory / CONFIG_FILE
-    values = json.loads(config_path.read_text()) if config_path.is_file() else {}
+    values = json.loads((run_directory / CONFIG_FILE).read_text())
+    dataset_name = values.pop("dataset", None)
+    if not dataset_name:
+        raise ValueError(f"{CONFIG_FILE} must name a dataset of {datasets_directory}. Run={run_directory}")
+
+    dataset_directory = datasets_directory / dataset_name
+    if not (dataset_directory / TASKS_FILE).is_file():
+        raise ValueError(f"Dataset with a {TASKS_FILE} not found. Dataset={dataset_directory}")
+
     search_limit = int(values.pop("search_limit", DEFAULT_SEARCH_LIMIT))
     app_config = AppConfig(**values).model_copy(
         update={
-            "database_path": version_directory / DATABASE_FILE,
-            "directories": [version_directory / DATA_DIRECTORY],
+            "database_path": run_directory / DATABASE_FILE,
+            "directories": [dataset_directory / DATA_DIRECTORY],
         }
     )
-    return EvalSettings(app_config=app_config, search_limit=search_limit)
+    return EvalSettings(
+        app_config=app_config,
+        search_limit=search_limit,
+        dataset_name=dataset_name,
+        dataset_directory=dataset_directory,
+    )
 
 
-def load_tasks(version_directory: Path) -> list[EvalTask]:
-    """Read the tasks file of a version folder.
+def load_tasks(dataset_directory: Path) -> list[EvalTask]:
+    """Read the tasks file of a dataset.
 
     Args:
-        version_directory: The version folder.
+        dataset_directory: The dataset folder.
 
     Returns:
         The tasks in file order.
     """
-    entries = json.loads((version_directory / TASKS_FILE).read_text())
+    entries = json.loads((dataset_directory / TASKS_FILE).read_text())
     return [EvalTask(id=entry["id"], question=entry["question"], expected=entry["expected"]) for entry in entries]
 
 
-def setup(version_directory: Path) -> Path:
-    """Create an empty database in the version folder. Delete the database of an earlier run first.
+def dataset_fingerprint(dataset_directory: Path) -> str:
+    """Hash the tasks and the documents of a dataset, so that two runs show whether they used the same data.
 
     Args:
-        version_directory: The version folder.
+        dataset_directory: The dataset folder.
+
+    Returns:
+        The SHA-256 hex digest over tasks.json and the name and bytes of each document, in sorted order.
+    """
+    digest = hashlib.sha256()
+    files = [dataset_directory / TASKS_FILE, *sorted((dataset_directory / DATA_DIRECTORY).iterdir())]
+    for path in files:
+        if path.is_file():
+            digest.update(path.relative_to(dataset_directory).as_posix().encode("utf-8") + b"\0")
+            digest.update(path.read_bytes() + b"\0")
+
+    return digest.hexdigest()
+
+
+def setup(run_directory: Path) -> Path:
+    """Create an empty database in the run folder. Delete the database of an earlier run first.
+
+    Args:
+        run_directory: The run folder.
 
     Returns:
         The location of the new database.
     """
-    database_path = version_directory / DATABASE_FILE
+    database_path = run_directory / DATABASE_FILE
     for suffix in ("", "-wal", "-shm", "-journal"):
         Path(f"{database_path}{suffix}").unlink(missing_ok=True)
 
@@ -226,22 +269,27 @@ def _hit_rate(ranks: list[int | None], cutoff: int) -> float:
     return round(sum(1 for rank in ranks if rank is not None and rank <= cutoff) / len(ranks), 4)
 
 
-def run_evals(version_directory: Path, build_model: ModelBuilder = build_embedding_model) -> dict:
-    """Index the documents of a version folder into a new database, run every task and write output.json.
+def run_evals(
+    run_directory: Path,
+    build_model: ModelBuilder = build_embedding_model,
+    datasets_directory: Path = DATASETS_DIRECTORY,
+) -> dict:
+    """Index the dataset of a run into a new database in the run folder, run every task and write output.json.
 
     Args:
-        version_directory: The version folder.
+        run_directory: The run folder.
         build_model: Builds the embedding model from the settings. Tests pass a fake model.
+        datasets_directory: The folder that holds the datasets.
 
     Returns:
         The content of output.json.
     """
-    settings = load_settings(version_directory)
-    tasks = load_tasks(version_directory)
+    settings = load_settings(run_directory, datasets_directory)
+    tasks = load_tasks(settings.dataset_directory)
     config = settings.app_config
     embedding_model = build_model(config)
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
-    database_path = setup(version_directory)
+    database_path = setup(run_directory)
 
     with SqliteChunkStore.open(database_path) as store:
         model_index = store.model_index(embedding_model.spec, create=True)
@@ -258,19 +306,25 @@ def run_evals(version_directory: Path, build_model: ModelBuilder = build_embeddi
         results = [run_task(service, task, settings.search_limit) for task in tasks]
 
     output = {
-        "version": version_directory.name,
+        "run": run_directory.name,
         "started_at": started_at,
+        "dataset": {
+            "name": settings.dataset_name,
+            "fingerprint": dataset_fingerprint(settings.dataset_directory),
+            "documents": documents,
+            "tasks": len(tasks),
+        },
         "config": {
             "embedding_model": embedding_model.spec.model_id,
             "chunk_size_tokens": embedding_model.chunk_size_tokens(config.chunk_size_tokens),
             "chunk_overlap_tokens": config.chunk_overlap_tokens,
             "search_limit": settings.search_limit,
         },
-        "indexing": {"documents": documents, "seconds": round(index_seconds, 3)},
+        "indexing": {"seconds": round(index_seconds, 3)},
         "summary": summarize(results),
         "tasks": [asdict(result) for result in results],
     }
-    output_path = version_directory / OUTPUT_FILE
+    output_path = run_directory / OUTPUT_FILE
     output_path.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return output
 
@@ -290,22 +344,22 @@ def print_report(output: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Run the evals of the version folder named on the command line.
+    """Run the evals of the run folder named on the command line.
 
     Args:
         argv: Command line arguments without the program name. Read sys.argv when None.
     """
-    parser = argparse.ArgumentParser(prog="evals", description="Run the retrieval evals of one version folder.")
-    parser.add_argument("version", help="Version folder inside the evals folder, such as v1, or a path to one.")
+    parser = argparse.ArgumentParser(prog="evals", description="Run the retrieval evals of one run folder.")
+    parser.add_argument("run", help="Run folder inside evals/runs, such as v1-baseline, or a path to one.")
     arguments = parser.parse_args(argv)
     try:
-        version_directory = resolve_version_directory(arguments.version)
-    except FileNotFoundError as error:
+        run_directory = resolve_run_directory(arguments.run)
+        output = run_evals(run_directory)
+    except (FileNotFoundError, ValueError) as error:
         sys.exit(str(error))
 
-    output = run_evals(version_directory)
     print_report(output)
-    print(f"Wrote {version_directory / OUTPUT_FILE}")
+    print(f"Wrote {run_directory / OUTPUT_FILE}")
 
 
 if __name__ == "__main__":

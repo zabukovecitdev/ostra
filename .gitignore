@@ -23,4 +23,4 @@ mutants/
 .awb/
 
 # Eval databases, rebuilt by every make evals run
-evals/*/ostra.db*
+evals/runs/*/ostra.db*

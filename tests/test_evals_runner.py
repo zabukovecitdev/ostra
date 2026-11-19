@@ -4,7 +4,16 @@ from pathlib import Path
 import pytest
 from conftest import WordTokenizer, make_spec
 
-from evals.runner import EvalTask, TaskResult, load_settings, resolve_version_directory, run_evals, setup, summarize
+from evals.runner import (
+    EvalTask,
+    TaskResult,
+    dataset_fingerprint,
+    load_settings,
+    resolve_run_directory,
+    run_evals,
+    setup,
+    summarize,
+)
 from ostra.models.app_config import AppConfig
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
 from ostra.services.embedding.embedding_model import EmbeddingModel
@@ -28,10 +37,10 @@ def build_keyword_model(config: AppConfig) -> EmbeddingModel:
 
 
 @pytest.fixture
-def version_directory(tmp_path: Path) -> Path:
-    """Provide a version folder with three documents and three tasks."""
-    version = tmp_path / "v-test"
-    data = version / "data"
+def datasets_directory(tmp_path: Path) -> Path:
+    """Provide a datasets folder with one dataset of three documents and three tasks."""
+    datasets = tmp_path / "datasets"
+    data = datasets / "tiny" / "data"
     data.mkdir(parents=True)
     (data / "bees.txt").write_text("bees make honey and bees dance")
     (data / "rivers.txt").write_text("rivers flow to the sea and rivers carve valleys")
@@ -41,35 +50,64 @@ def version_directory(tmp_path: Path) -> Path:
         {"id": 2, "question": "where do rivers flow", "expected": "rivers.txt"},
         {"id": 3, "question": "what do bees dance about", "expected": "stars.txt"},
     ]
-    (version / "tasks.json").write_text(json.dumps(tasks))
-    (version / "config.json").write_text(
-        json.dumps({"chunk_size_tokens": 20, "chunk_overlap_tokens": 0, "search_limit": 1})
-    )
-    return version
+    (datasets / "tiny" / "tasks.json").write_text(json.dumps(tasks))
+    return datasets
 
 
-def test_run_evals_writes_the_rank_of_each_expected_document(version_directory: Path):
-    output = run_evals(version_directory, build_model=build_keyword_model)
+@pytest.fixture
+def run_directory(tmp_path: Path) -> Path:
+    """Provide a run folder whose config names the tiny dataset."""
+    run = tmp_path / "runs" / "r-test"
+    run.mkdir(parents=True)
+    config = {"dataset": "tiny", "chunk_size_tokens": 20, "chunk_overlap_tokens": 0, "search_limit": 1}
+    (run / "config.json").write_text(json.dumps(config))
+    return run
 
-    written = json.loads((version_directory / "output.json").read_text())
+
+def test_run_evals_writes_the_rank_of_each_expected_document(run_directory: Path, datasets_directory: Path):
+    output = run_evals(run_directory, build_model=build_keyword_model, datasets_directory=datasets_directory)
+
+    written = json.loads((run_directory / "output.json").read_text())
     assert written == output
     assert [task["first_result"] for task in output["tasks"]] == ["bees.txt", "rivers.txt", "bees.txt"]
     assert [task["expected_rank"] for task in output["tasks"]] == [1, 1, None]
     assert all(task["seconds"] >= 0 for task in output["tasks"])
-    assert output["indexing"]["documents"] == 3
+    assert output["run"] == "r-test"
+    assert output["dataset"]["name"] == "tiny"
+    assert output["dataset"]["documents"] == 3
+    assert output["dataset"]["fingerprint"] == dataset_fingerprint(datasets_directory / "tiny")
     assert output["config"]["search_limit"] == 1
     assert output["summary"]["hit_at_1"] == pytest.approx(2 / 3, abs=1e-4)
     assert output["summary"]["not_found"] == 1
-    assert (version_directory / "ostra.db").is_file()
+    assert (run_directory / "ostra.db").is_file()
+    assert not (datasets_directory / "tiny" / "ostra.db").exists()
 
 
-def test_run_evals_starts_from_an_empty_database_each_time(version_directory: Path):
-    run_evals(version_directory, build_model=build_keyword_model)
-    (version_directory / "data" / "stars.txt").unlink()
+def test_run_evals_starts_from_an_empty_database_each_time(run_directory: Path, datasets_directory: Path):
+    run_evals(run_directory, build_model=build_keyword_model, datasets_directory=datasets_directory)
+    (datasets_directory / "tiny" / "data" / "stars.txt").unlink()
 
-    output = run_evals(version_directory, build_model=build_keyword_model)
+    output = run_evals(run_directory, build_model=build_keyword_model, datasets_directory=datasets_directory)
 
     assert "stars.txt" not in {name for task in output["tasks"] for name in task["top_documents"]}
+
+
+def test_dataset_fingerprint_changes_when_a_document_changes(datasets_directory: Path):
+    dataset = datasets_directory / "tiny"
+    before = dataset_fingerprint(dataset)
+
+    (dataset / "data" / "stars.txt").write_text("stars shine at night and at dawn")
+
+    assert dataset_fingerprint(dataset) != before
+
+
+def test_dataset_fingerprint_changes_when_a_task_changes(datasets_directory: Path):
+    dataset = datasets_directory / "tiny"
+    before = dataset_fingerprint(dataset)
+
+    (dataset / "tasks.json").write_text("[]")
+
+    assert dataset_fingerprint(dataset) != before
 
 
 def test_setup_replaces_an_old_database(tmp_path: Path):
@@ -81,19 +119,45 @@ def test_setup_replaces_an_old_database(tmp_path: Path):
     assert database_path.read_bytes().startswith(b"SQLite format 3")
 
 
-def test_load_settings_keeps_the_database_in_the_version_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OSTRA_DATABASE_PATH", str(tmp_path / "elsewhere.db"))
+def test_load_settings_keeps_the_database_in_the_run_folder(
+    run_directory: Path, datasets_directory: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("OSTRA_DATABASE_PATH", str(run_directory / "elsewhere.db"))
 
-    settings = load_settings(tmp_path)
+    settings = load_settings(run_directory, datasets_directory)
 
-    assert settings.app_config.database_path == tmp_path / "ostra.db"
-    assert settings.app_config.directories == [tmp_path / "data"]
-    assert settings.search_limit == 50
+    assert settings.app_config.database_path == run_directory / "ostra.db"
+    assert settings.app_config.directories == [datasets_directory / "tiny" / "data"]
+    assert settings.dataset_directory == datasets_directory / "tiny"
 
 
-def test_resolve_version_directory_rejects_a_folder_without_tasks(tmp_path: Path):
+def test_load_settings_uses_the_default_search_limit(tmp_path: Path, datasets_directory: Path):
+    (tmp_path / "config.json").write_text(json.dumps({"dataset": "tiny"}))
+
+    assert load_settings(tmp_path, datasets_directory).search_limit == 50
+
+
+def test_load_settings_requires_a_dataset(tmp_path: Path, datasets_directory: Path):
+    (tmp_path / "config.json").write_text("{}")
+
+    with pytest.raises(ValueError, match="must name a dataset"):
+        load_settings(tmp_path, datasets_directory)
+
+
+def test_load_settings_rejects_an_unknown_dataset(tmp_path: Path, datasets_directory: Path):
+    (tmp_path / "config.json").write_text(json.dumps({"dataset": "missing"}))
+
+    with pytest.raises(ValueError, match="Dataset with a tasks.json not found"):
+        load_settings(tmp_path, datasets_directory)
+
+
+def test_resolve_run_directory_rejects_a_folder_without_config(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
-        resolve_version_directory(str(tmp_path))
+        resolve_run_directory(str(tmp_path))
+
+
+def test_resolve_run_directory_finds_the_baseline_run():
+    assert resolve_run_directory("v1-baseline").name == "v1-baseline"
 
 
 def test_summarize_counts_hits_and_reciprocal_ranks():

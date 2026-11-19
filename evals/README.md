@@ -3,43 +3,62 @@
 The evals measure how well the search finds the right document for a question.
 
 ```bash
-make evals v1                 # same as: uv run python -m evals.runner v1
+make evals v1-baseline        # same as: uv run python -m evals.runner v1-baseline
 ```
 
-Ollama must be running with the model of the version's `config.json` pulled (`ollama pull mxbai-embed-large`).
+Ollama must be running with the model of the run's `config.json` pulled (`ollama pull mxbai-embed-large`).
 
-## Version folders
+## Layout
 
-Each folder under `evals/` is one version of the eval: the documents, the questions, the settings and the results of
-the last run. To try a change, copy a folder and change one thing, then run both and compare their `output.json`.
+Datasets and runs are kept apart. A **dataset** is the documents and the questions. A **run** is one set of settings
+tried against one dataset, with its results.
 
 ```
 evals/
-  runner.py            the code that runs a version folder
-  v1/
-    config.json        settings of the run
-    tasks.json         the questions
-    data/              the documents to index
-    ostra.db           the database of the last run (written by the run, not committed)
-    output.json        the results of the last run (written by the run)
+  runner.py                     the code that runs a run folder
+  datasets/
+    wiki-v1/
+      tasks.json                the questions
+      data/                     the documents to index
+  runs/
+    v1-baseline/
+      config.json               the dataset name and the settings
+      ostra.db                  the database of the last run (written by the run, not committed)
+      output.json               the results of the last run (written by the run)
 ```
 
+**Do not edit a dataset once runs use it.** Runs compare only when they used the same data. To change the documents
+or the questions, copy the dataset to a new name (`wiki-v2`) and change the copy. A new dataset starts a new
+baseline: run your current best settings on it first, then compare new settings against that.
+
+Every `output.json` records a `fingerprint` of its dataset: a SHA-256 hash of `tasks.json` and every document. Two
+runs are comparable only when their fingerprints are the same. If they differ, the dataset changed between them.
+
+## Trying a change
+
+Copy a run, change one setting, run both, and compare their `output.json`:
+
 ```bash
-cp -r evals/v1 evals/v2       # then edit evals/v2/config.json, e.g. "chunk_size_tokens": 256
-make evals v2
+cp -r evals/runs/v1-baseline evals/runs/v1-chunk256
+# edit evals/runs/v1-chunk256/config.json: "chunk_size_tokens": 256
+make evals v1-chunk256
 ```
+
+Change one thing per run, so you know what moved the score.
 
 ### config.json
 
 | Key | Meaning | Default |
 |---|---|---|
+| `dataset` | Folder name in `evals/datasets/`. Required | |
 | `embedding_model` | `mxbai-embed-large` or `bge-m3` | `mxbai-embed-large` |
 | `chunk_size_tokens` | Chunk size in tokens | default of the model (510) |
 | `chunk_overlap_tokens` | Tokens shared by two neighbor chunks | 50 |
 | `search_limit` | Chunks returned by each search. The expected file must be among them to get a rank | 50 |
 | `ollama_base_url` | Address of the Ollama server | `http://localhost:11434` |
 
-The run always uses `<version>/ostra.db` and `<version>/data/`, so it never touches your own index.
+A run always uses its own `ostra.db` and its dataset's `data/`, so it never touches your own index, even when
+`OSTRA_` environment variables are set.
 
 ### tasks.json
 
@@ -59,15 +78,18 @@ it documents the task and is ready for answer-generation evals later.
 
 ## What a run does
 
-1. `setup()` deletes the database of the previous run and creates an empty one in the version folder.
-2. Every file in `data/` is chunked, embedded and stored in that database.
+1. `setup()` deletes the database of the previous run and creates an empty one in the run folder.
+2. Every file in the dataset's `data/` is chunked, embedded and stored in that database.
 3. Each question is embedded and searched. The chunks are grouped by file, so a file that has three matching
    chunks counts once, at the position of its best chunk.
-4. The results go to `output.json` and a short report is printed.
+4. The results go to `output.json` in the run folder, and a short report is printed.
 
 ### output.json
 
-Per task:
+`dataset` holds the dataset's `name`, `fingerprint`, and its number of `documents` and `tasks`. `config` holds the
+settings the run actually used. `indexing.seconds` is the time to embed and store all documents.
+
+For each task:
 
 | Field | Meaning |
 |---|---|
@@ -75,7 +97,7 @@ Per task:
 | `first_result` | The file of the nearest chunk |
 | `first_distance` | Cosine distance of the nearest chunk (0 is the same direction) |
 | `expected_rank` | Position of the expected file among the found files, starting at 1. `null` when it is not in the results |
-| `top_documents` | The first five files found |
+| `top_documents` | The first five files |
 
 The `summary` totals the run:
 
@@ -86,9 +108,7 @@ The `summary` totals the run:
 | `not_found` | Tasks whose expected file was not in the results at all |
 | `mean_seconds`, `median_seconds`, `max_seconds` | Search times |
 
-`indexing.seconds` is the time to embed and store all documents.
-
-## How big should the eval be?
+## How big should a dataset be?
 
 For a first eval, **10–20 documents and 30–50 questions** is enough to spot clear problems and compare settings.
 The number of questions matters more than the number of documents: with 30 questions one task is 3.3 percentage
@@ -96,12 +116,16 @@ points, so a change of one or two tasks between runs is noise. Grow to 100+ ques
 two settings that are close. Documents on related topics (two universities, two places in California, two
 French-history articles) make the eval harder and more realistic, because a wrong file can look right.
 
-`v1` has 15 documents and 30 questions, two per document.
+If you tune settings against the same questions for a long time, you start tuning for those questions. Once a
+dataset has enough questions, keep 20–30% of them in a separate dataset and check it only now and then, to confirm
+that a gain is real.
 
-## Data of v1
+## Dataset wiki-v1
 
-The documents of `v1/data/` are the passages of 15 English Wikipedia articles as published in the development set of
-SQuAD 2.0 (Rajpurkar et al., 2018, <https://rajpurkar.github.io/SQuAD-explorer/>). The text is licensed under
+15 documents and 30 questions, two per document.
+
+The documents are the passages of 15 English Wikipedia articles as published in the development set of SQuAD 2.0
+(Rajpurkar et al., 2018, <https://rajpurkar.github.io/SQuAD-explorer/>). The text is licensed under
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); the authors are the Wikipedia contributors of
 each article. The paragraphs of each article are joined into one file. The questions were written for this eval,
 based on SQuAD questions, and reworded so that each one makes sense without the article in front of you.
