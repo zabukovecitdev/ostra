@@ -1,0 +1,6 @@
+{
+  "embedding_model": "mxbai-embed-large",
+  "chunk_size_tokens": 510,
+  "chunk_overlap_tokens": 50,
+  "search_limit": 50
+}

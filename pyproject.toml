@@ -58,18 +58,19 @@ select = ["E", "F", "W", "I", "B", "UP", "C90"]
 max-complexity = 10
 
 [tool.complexipy]
-paths = ["src"]
+paths = ["src", "evals"]
 max-complexity-allowed = 15
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.mutmut]
 source_paths = ["src/ostra/"]
 
 [tool.mypy]
 python_version = "3.14"
-files = ["src"]
+files = ["src", "evals"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 

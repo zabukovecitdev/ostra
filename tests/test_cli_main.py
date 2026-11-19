@@ -17,14 +17,14 @@ def test_apply_database_override__path_given__replaces_configured_path(tmp_path:
     """Use the database of the option instead of the configured one."""
     config = AppConfig(database_path=tmp_path / "config.db")
 
-    assert _apply_database_override(config, tmp_path / "eval.db").database_path == tmp_path / "eval.db"
+    assert _apply_database_override(config, tmp_path / "other.db").database_path == tmp_path / "other.db"
 
 
 def test_apply_database_override__tilde__expands_home_directory(tmp_path: Path):
     """Expand a leading tilde in the option."""
     config = AppConfig(database_path=tmp_path / "config.db")
 
-    assert _apply_database_override(config, Path("~/eval.db")).database_path == Path.home() / "eval.db"
+    assert _apply_database_override(config, Path("~/other.db")).database_path == Path.home() / "other.db"
 
 
 def test_apply_database_override__none__keeps_configured_path(tmp_path: Path):

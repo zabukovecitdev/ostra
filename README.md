@@ -32,6 +32,7 @@ Everything runs on your machine. No text leaves it.
 - [Background indexing (Linux)](#background-indexing-linux)
 - [Architecture](#architecture)
 - [Development](#development)
+- [Evals](#evals)
 - [Performance](#performance)
 - [Known limitations](#known-limitations)
 - [Roadmap](#roadmap)
@@ -199,10 +200,15 @@ make check            # lint, format check, type check and tests
 | `make format` | Format the code with ruff |
 | `make typecheck` | Check the types with mypy |
 | `make check` | Run all of the checks above |
+| `make evals v1` | Run the retrieval evals of the version folder `evals/v1` (needs Ollama) |
 
 The suite runs 219 tests. The tests do not call Ollama: they use a fake embedding model and a local tokenizer file.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
+
+## Evals
+
+`make evals <version>` indexes the documents of `evals/<version>/data/` into a new database in that folder, asks every question of `tasks.json` and writes the rank of the expected file to `output.json`. Each version folder keeps its own documents, tasks, settings and results, so two runs compare side by side. See [evals/README.md](evals/README.md).
 
 ## Performance
 
