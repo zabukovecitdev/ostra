@@ -14,7 +14,7 @@ def test_model_index__legacy_index_opened_for_writing__stores_fingerprint(tmp_pa
     """Stamp the legacy index with the fingerprint of mxbai on the first write open, and refuse other settings later."""
     database_path = tmp_path / "ostra.db"
     build_legacy_database(database_path, tmp_path, monkeypatch)
-    other = replace(MXBAI_EMBED_LARGE, ollama_model="bge-m3:latest")
+    other = replace(MXBAI_EMBED_LARGE, provider_model="bge-m3:latest")
 
     with SqliteChunkStore.open(database_path) as store:
         store.model_index(MXBAI_EMBED_LARGE, create=True)

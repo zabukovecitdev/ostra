@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 import sqlite_vec
 
+from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
 from ostra.models.embedding_model_spec import EmbeddingModelSpec
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
@@ -19,7 +20,8 @@ def make_spec(model_id: str, dimensions: int, **overrides) -> EmbeddingModelSpec
     """Build a model spec for a test. A small vector keeps the tests light."""
     values = {
         "model_id": model_id,
-        "ollama_model": f"{model_id}:latest",
+        "provider": EmbeddingProviderName.OLLAMA,
+        "provider_model": f"{model_id}:latest",
         "dimensions": dimensions,
         "max_tokens": 512,
         "special_tokens": 2,

@@ -5,7 +5,9 @@ from conftest import ConstantEmbeddingProvider
 
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.app_config import AppConfig
-from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE
+from ostra.models.embedding_model_registry import MXBAI_EMBED_LARGE, POTION_MULTILINGUAL_128M
+from ostra.providers.embeddings.fastembed_embedding_provider import FastEmbedEmbeddingProvider
+from ostra.providers.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider
 from ostra.providers.tokenizers.hugging_face_tokenizer import HuggingFaceTokenizer
 from ostra.services.embedding import embedding_model_factory
 from ostra.services.embedding.embedding_model_factory import build_embedding_model, ollama_settings
@@ -36,16 +38,26 @@ def test_ollama_settings__model_environment_variable_set__raises_value_error(
         ollama_settings(AppConfig(database_path=tmp_path / "db"))
 
 
-def test_build_embedding_model__default_config__returns_mxbai_model_with_its_tokenizer(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """Return the mxbai spec, a provider and the mxbai tokenizer for the default config."""
-    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
-
+def test_build_embedding_model__default_config__returns_in_process_model_with_its_tokenizer(tmp_path: Path):
+    """Return the potion spec, the FastEmbed provider and the potion tokenizer for the default config."""
     model = build_embedding_model(AppConfig(database_path=tmp_path / "db"))
 
-    assert model.spec == MXBAI_EMBED_LARGE
+    assert model.spec == POTION_MULTILINGUAL_128M
+    assert isinstance(model.provider, FastEmbedEmbeddingProvider)
     assert isinstance(model.tokenizer, HuggingFaceTokenizer)
+
+
+def test_build_embedding_model__ollama_model__returns_the_ollama_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Take the provider from the model: an Ollama model gets the Ollama provider."""
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    config = AppConfig(database_path=tmp_path / "db", embedding_model="mxbai-embed-large")
+
+    model = build_embedding_model(config)
+
+    assert model.spec == MXBAI_EMBED_LARGE
+    assert isinstance(model.provider, OllamaEmbeddingProvider)
 
 
 def test_build_embedding_model__model_id_given__overrides_the_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -85,4 +97,6 @@ def test_build_embedding_model__builder_registered__uses_it_for_the_provider(
         embedding_model_factory, "PROVIDER_BUILDERS", {EmbeddingProviderName.OLLAMA: lambda spec, config: provider}
     )
 
-    assert build_embedding_model(AppConfig(database_path=tmp_path / "db")).provider is provider
+    config = AppConfig(database_path=tmp_path / "db", embedding_model="mxbai-embed-large")
+
+    assert build_embedding_model(config).provider is provider

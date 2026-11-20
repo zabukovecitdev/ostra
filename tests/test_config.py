@@ -28,8 +28,7 @@ def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp
         "database_path": str(DEFAULT_DATABASE_PATH),
         "directories": [],
         "chunk_overlap_tokens": 50,
-        "embedding_provider": "ollama",
-        "embedding_model": "mxbai-embed-large",
+        "embedding_model": "potion-multilingual-128m",
     }
 
 
@@ -209,21 +208,20 @@ def test_load_config__ollama_base_url_missing__returns_none(tmp_path: Path):
     assert load_config(config_path).ollama_base_url is None
 
 
-def test_load_config__unknown_provider__raises_value_error(tmp_path: Path):
-    """Reject a provider name that is not supported."""
+def test_load_config__old_file_with_embedding_provider__keeps_its_model(tmp_path: Path):
+    """Load a config file that an earlier version wrote. The model decides the provider, so the old key is ignored."""
     config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"embedding_provider": "magic"}))
+    config_path.write_text(json.dumps({"embedding_provider": "ollama", "embedding_model": "mxbai-embed-large"}))
 
-    with pytest.raises(ValueError, match="embedding_provider"):
-        load_config(config_path)
+    assert load_config(config_path).embedding_model == "mxbai-embed-large"
 
 
 def test_load_config__embedding_model_missing__returns_default_model(tmp_path: Path):
-    """Keep an old config file working: it has no embedding_model key and gets mxbai-embed-large."""
+    """Use the model that runs in the ostra process when the config file names no model."""
     config_path = tmp_path / "config.json"
     config_path.write_text("{}")
 
-    assert load_config(config_path).embedding_model == "mxbai-embed-large"
+    assert load_config(config_path).embedding_model == "potion-multilingual-128m"
 
 
 def test_load_config__embedding_model_unknown__raises_value_error_that_lists_supported_models(tmp_path: Path):
@@ -231,7 +229,9 @@ def test_load_config__embedding_model_unknown__raises_value_error_that_lists_sup
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps({"embedding_model": "magic"}))
 
-    with pytest.raises(ValueError, match=r"embedding_model\n.*must be one of mxbai-embed-large"):
+    with pytest.raises(
+        ValueError, match=r"embedding_model\n.*must be one of potion-multilingual-128m, mxbai-embed-large, bge-m3"
+    ):
         load_config(config_path)
 
 
@@ -280,7 +280,7 @@ def test_load_config__unknown_key__is_ignored(tmp_path: Path):
     config_path = tmp_path / "config.json"
     config_path.write_text('{"removed_setting": 1}')
 
-    assert load_config(config_path).embedding_model == "mxbai-embed-large"
+    assert load_config(config_path).embedding_model == "potion-multilingual-128m"
 
 
 def test_load_config__file_is_not_an_object__raises_value_error(tmp_path: Path):

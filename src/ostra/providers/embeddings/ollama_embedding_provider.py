@@ -27,8 +27,8 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         Raises:
             ValueError: When the server response contains no embedding.
         """
-        response = self._client.embed(model=self._spec.ollama_model, input=text, truncate=False)
+        response = self._client.embed(model=self._spec.provider_model, input=text, truncate=False)
         if not response.embeddings:
-            raise ValueError(f"Ollama response contains no embedding. Model={self._spec.ollama_model}")
+            raise ValueError(f"Ollama response contains no embedding. Model={self._spec.provider_model}")
 
         return list(response.embeddings[0])

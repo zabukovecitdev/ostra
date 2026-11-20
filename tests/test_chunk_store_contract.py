@@ -234,7 +234,7 @@ def test_model_index__dimensions_changed__raises_mismatch_error(store: SqliteChu
 def test_model_index__same_dimensions_but_other_model_settings__raises_mismatch_error(store: SqliteChunkStore):
     """Refuse an index when the Ollama model changed but the dimensions stayed the same."""
     store.model_index(TEST_SPEC, create=True)
-    changed = replace(TEST_SPEC, ollama_model="newer:latest")
+    changed = replace(TEST_SPEC, provider_model="newer:latest")
 
     with pytest.raises(ModelIndexMismatchError):
         store.model_index(changed, create=True)
