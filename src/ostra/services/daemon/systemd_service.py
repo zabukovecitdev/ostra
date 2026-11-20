@@ -71,9 +71,18 @@ def uninstall_service() -> str:
     return f"Service removed. Unit={path}"
 
 
+def is_supported() -> bool:
+    """Tell whether the system can run a systemd user service.
+
+    Returns:
+        True on Linux with systemctl on the PATH.
+    """
+    return sys.platform.startswith("linux") and shutil.which("systemctl") is not None
+
+
 def _require_systemd() -> None:
     """Raise an error when the system cannot run a systemd user service."""
-    if not sys.platform.startswith("linux") or shutil.which("systemctl") is None:
+    if not is_supported():
         raise RuntimeError("Service install supports Linux with systemd only. Run ostra-daemon directly instead.")
 
 

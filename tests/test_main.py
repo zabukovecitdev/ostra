@@ -265,3 +265,45 @@ def test_main__positional_folder_with_recursive__parses_both():
 
     assert arguments.folders == [Path("/data/notes")]
     assert arguments.recursive is True
+
+
+def test_main__no_recursive_flag__overrides_config(monkeypatch: pytest.MonkeyPatch):
+    """Parse --no-recursive as False and leave the option unset when it is not given."""
+    assert build_parser().parse_args(["index", "--no-recursive"]).recursive is False
+    assert build_parser().parse_args(["index"]).recursive is None
+
+
+def test_main__init__runs_setup_without_opening_the_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Run the setup and skip load_config and the index, which the setup does not need."""
+    setup_calls = []
+
+    def fail_if_called():
+        raise AssertionError("load_config must not run for init")
+
+    monkeypatch.setattr(main, "load_config", fail_if_called)
+    monkeypatch.setattr(commands, "default_config_path", lambda: tmp_path / "config.json")
+    monkeypatch.setattr(commands, "run_setup", lambda prompter, path, directories: setup_calls.append(path))
+
+    main.main(["init", "--defaults"])
+
+    assert setup_calls == [tmp_path / "config.json"]
+
+
+def test_main__init_without_terminal__exits_with_hint(monkeypatch: pytest.MonkeyPatch):
+    """Stop with a hint when the input is not a terminal and --defaults is not given."""
+    monkeypatch.setattr(commands.sys.stdin, "isatty", lambda: False)
+
+    with pytest.raises(SystemExit, match="ostra init --defaults"):
+        main.main(["init"])
+
+
+def test_main__init_defaults__writes_config_and_does_not_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Write the config file with the given folder and index nothing."""
+    config_path = tmp_path / "config.json"
+    notes = tmp_path / "notes"
+    monkeypatch.setattr(commands, "default_config_path", lambda: config_path)
+    monkeypatch.setattr(commands, "open_index", lambda *args, **kwargs: pytest.fail("must not index"))
+
+    main.main(["init", "--defaults", "--directory", str(notes)])
+
+    assert json.loads(config_path.read_text())["directories"] == [str(notes)]

@@ -20,6 +20,10 @@ def main(argv: list[str] | None = None) -> None:
         parser.print_help()
         return
 
+    if not arguments.needs_index:
+        arguments.handler(arguments)
+        return
+
     config = _apply_database_override(load_config(), arguments.database)
     with open_index(config, model_id=arguments.model, create=arguments.create_index) as session:
         arguments.handler(arguments, config, session)

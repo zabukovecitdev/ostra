@@ -1,14 +1,14 @@
 import argparse
 from pathlib import Path
 
-from ostra.cli.commands import run_index, run_search
+from ostra.cli.commands import run_index, run_init, run_search
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS
 
 DEFAULT_SEARCH_LIMIT = 5
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the command line parser with the index and search commands.
+    """Build the command line parser with the init, index and search commands.
 
     Returns:
         The parser. Each command has its own options, and the database option works with both commands.
@@ -33,13 +33,32 @@ def build_parser() -> argparse.ArgumentParser:
 
     commands = parser.add_subparsers(dest="command", metavar="COMMAND")
 
+    init = commands.add_parser(
+        "init",
+        help="Set up the model, the connection and the folders step by step.",
+        description="Set up the embedding model, the Ollama connection, the folders and the indexing settings.",
+    )
+    init.set_defaults(handler=run_init, needs_index=False)
+    init.add_argument(
+        "--defaults",
+        action="store_true",
+        help="Ask no questions. Keep the current settings, or save the defaults when there is no config file.",
+    )
+    init.add_argument(
+        "--directory",
+        action="append",
+        type=Path,
+        metavar="PATH",
+        help="Folder to add to the configured folders. Repeat the option for more folders.",
+    )
+
     index = commands.add_parser(
         "index",
         parents=[shared],
         help="Embed and store the new or changed chunks of the configured folders.",
         description="Embed and store the new or changed chunks of the configured folders.",
     )
-    index.set_defaults(handler=run_index, create_index=True)
+    index.set_defaults(handler=run_index, needs_index=True, create_index=True)
     index.add_argument(
         "folders",
         nargs="*",
@@ -61,8 +80,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     index.add_argument(
         "--recursive",
-        action="store_true",
-        help="Index the files in the subfolders too. Skip hidden subfolders, such as .git.",
+        action=argparse.BooleanOptionalAction,
+        help="Index the files in the subfolders too, or not. Skip hidden subfolders, such as .git. "
+        "Overrides recursive in the config file.",
     )
 
     search = commands.add_parser(
@@ -71,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the stored chunks closest to a query.",
         description="Print the stored chunks closest to a query, nearest first.",
     )
-    search.set_defaults(handler=run_search, create_index=False)
+    search.set_defaults(handler=run_search, needs_index=True, create_index=False)
     search.add_argument("query", help="The text to search for.")
     search.add_argument(
         "--limit",
