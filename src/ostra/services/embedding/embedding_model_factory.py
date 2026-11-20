@@ -2,12 +2,14 @@ import os
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
 
+from ostra.constants import MODEL_CACHE_DIRECTORY
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.app_config import AppConfig
 from ostra.models.embedding_model_registry import get_model_spec
 from ostra.models.embedding_model_spec import EmbeddingModelSpec
 from ostra.models.ollama_settings import OllamaSettings
 from ostra.providers.embeddings.embedding_provider import EmbeddingProvider
+from ostra.providers.embeddings.fastembed_embedding_provider import FastEmbedEmbeddingProvider
 from ostra.providers.embeddings.ollama_embedding_provider import OllamaEmbeddingProvider
 from ostra.providers.tokenizers.hugging_face_tokenizer import HuggingFaceTokenizer
 from ostra.services.embedding.embedding_model import EmbeddingModel
@@ -52,14 +54,34 @@ def _build_ollama_provider(spec: EmbeddingModelSpec, config: AppConfig) -> Embed
     return OllamaEmbeddingProvider(spec, ollama_settings(config))
 
 
+def _build_fastembed_provider(spec: EmbeddingModelSpec, config: AppConfig) -> EmbeddingProvider:
+    """Build the provider that runs the model in the ostra process.
+
+    Args:
+        spec: The embedding model.
+        config: The application settings. The provider needs none of them.
+
+    Returns:
+        The FastEmbed embedding provider.
+    """
+    return FastEmbedEmbeddingProvider(spec, MODEL_CACHE_DIRECTORY)
+
+
 # A new provider is one new builder here and one new name in EmbeddingProviderName.
 PROVIDER_BUILDERS: Mapping[EmbeddingProviderName, Callable[[EmbeddingModelSpec, AppConfig], EmbeddingProvider]] = (
-    MappingProxyType({EmbeddingProviderName.OLLAMA: _build_ollama_provider})
+    MappingProxyType(
+        {
+            EmbeddingProviderName.FASTEMBED: _build_fastembed_provider,
+            EmbeddingProviderName.OLLAMA: _build_ollama_provider,
+        }
+    )
 )
 
 
 def build_embedding_model(config: AppConfig, model_id: str | None = None) -> EmbeddingModel:
     """Build the embedding model that the config file selects, or the model that is named.
+
+    The model decides the provider: each model in the registry names the service that runs it.
 
     Args:
         config: The application settings.
@@ -71,11 +93,11 @@ def build_embedding_model(config: AppConfig, model_id: str | None = None) -> Emb
     Raises:
         ValueError: When the provider or the model is not supported.
     """
-    build_provider = PROVIDER_BUILDERS.get(config.embedding_provider)
-    if build_provider is None:
-        raise ValueError(f"Embedding provider is not supported. Provider={config.embedding_provider}")
-
     spec = get_model_spec(model_id or config.embedding_model)
+    build_provider = PROVIDER_BUILDERS.get(spec.provider)
+    if build_provider is None:
+        raise ValueError(f"Embedding provider is not supported. Provider={spec.provider.value}")
+
     return EmbeddingModel(
         spec=spec,
         provider=build_provider(spec, config),

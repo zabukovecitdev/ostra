@@ -1,7 +1,9 @@
-from platformdirs import user_data_path
+from platformdirs import user_cache_path, user_data_path
 
 APP_NAME = "ostra"
 DATA_DIRECTORY = user_data_path(APP_NAME)
+# The models that run in the ostra process are downloaded here on first use.
+MODEL_CACHE_DIRECTORY = user_cache_path(APP_NAME) / "models"
 DEFAULT_DATABASE_PATH = DATA_DIRECTORY / "ostra.db"
 DEFAULT_CHUNK_OVERLAP_TOKENS = 50
 OWNER_ONLY_DIRECTORY_MODE = 0o700

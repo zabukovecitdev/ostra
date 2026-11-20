@@ -42,7 +42,7 @@ Everything runs on your machine. No text leaves it.
 
 - **Token-based chunking** with configurable size and overlap. Token counts come from the embedding model's own tokenizer, so each chunk fits the model's input limit.
 - **Resumable ingestion.** Each chunk is stored under its content digest. A rerun skips chunks that are already embedded, so an interrupted run continues where it stopped.
-- **Local embeddings** through [Ollama](https://ollama.com), with `mxbai-embed-large` (default) or `bge-m3` for multilingual text.
+- **Local embeddings with no setup.** The default model, `potion-multilingual-128m`, runs inside ostra on the CPU and supports more than 100 languages. It needs no GPU and no server. Switch to [Ollama](https://ollama.com) with `mxbai-embed-large` or `bge-m3` for larger models.
 - **One index for each model.** Vectors of two models never mix, so you can compare models on the same files.
 - **Vector search** with cosine distance, from the command line, with plain text or JSON output.
 - **SQLite storage with `sqlite-vec`.** One database holds an index for each embedding model, with versioned migrations.
@@ -53,20 +53,20 @@ Everything runs on your machine. No text leaves it.
 
 ```
  ┌──────────────┐    ┌──────────┐    ┌───────────┐    ┌──────────────┐
- │ Text files   │───►│ Chunker  │───►│  Ollama   │───►│ Vector store │
- │ .txt .md .csv│    │ (tokens) │    │ embedding │    │    SQLite    │
+ │ Text files   │───►│ Chunker  │───►│ Embedding │───►│ Vector store │
+ │ .txt .md .csv│    │ (tokens) │    │   model   │    │    SQLite    │
  └──────────────┘    └──────────┘    └───────────┘    └──────┬───────┘
                                                              │
  ┌──────────────┐    ┌──────────┐    ┌───────────┐           │
- │ Ranked chunks│◄───│  Search  │◄───│  Ollama   │◄── query  │
- │ with sources │    │ (cosine) │    │ embedding │           │
+ │ Ranked chunks│◄───│  Search  │◄───│ Embedding │◄── query  │
+ │ with sources │    │ (cosine) │    │   model   │           │
  └──────────────┘    └────┬─────┘    └───────────┘           │
                           └──────────────────────────────────┘
 ```
 
 1. A source reads your files and puts them in a bounded queue.
 2. The pipeline splits each file into chunks with the model's tokenizer.
-3. Ollama embeds each new chunk. Chunks with a known digest are skipped.
+3. The embedding model embeds each new chunk, in the ostra process or on an Ollama server. Chunks with a known digest are skipped.
 4. The store saves the chunk text and its vector in the index of that model.
 5. A search embeds the query with the same model and returns the closest chunks.
 
@@ -74,14 +74,20 @@ Everything runs on your machine. No text leaves it.
 
 - Python 3.14
 - [uv](https://docs.astral.sh/uv/)
-- [Ollama](https://ollama.com) running locally or on your network, with the embedding model pulled:
-
-  ```bash
-  ollama pull mxbai-embed-large
-  ollama pull bge-m3          # optional, for multilingual text
-  ```
-
 - `make` (optional, for the shortcuts below)
+
+Nothing else is needed for the default model. On the first index or search, ostra downloads the model from Hugging Face (about 500 MB) into your user cache folder, for example `~/.cache/ostra/models` on Linux. Later runs work offline.
+
+The default model runs on ONNX Runtime, which has wheels for Linux (x86_64 and arm64), macOS on Apple silicon and Windows. Intel Macs can use the Ollama models.
+
+### Optional: Ollama models
+
+For the larger Ollama models, run [Ollama](https://ollama.com) locally or on your network, pull the model and set `embedding_model` in the config file:
+
+```bash
+ollama pull mxbai-embed-large
+ollama pull bge-m3          # multilingual
+```
 
 ## Installation
 
@@ -117,13 +123,20 @@ The config file is `config.json` in your user config folder, for example `~/.con
 |---|---|---|
 | `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. |
 | `directories` | none | Folders to process. Add at least one before the first run. The top-level `.txt`, `.md` and `.csv` files are read. `ostra index --recursive` reads the subfolders too. |
-| `chunk_size_tokens` | not set | Tokens per chunk. When not set, the default of the embedding model applies (510 for mxbai-embed-large). The value must fit the model input after its special tokens. |
+| `chunk_size_tokens` | not set | Tokens per chunk. When not set, the default of the embedding model applies (510 for every supported model). The value must fit the model input after its special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
-| `embedding_provider` | `ollama` | The service that creates embeddings. Ollama is the only provider now. |
-| `embedding_model` | `mxbai-embed-large` | The embedding model: `mxbai-embed-large` or `bge-m3`. Use `bge-m3` for non-English text such as Slovene. Each model has its own index in the database. `ostra index --model ID` and `ostra search --model ID` override it for one run. |
-| `ollama_base_url` | not set | Address of the Ollama server, for example `http://192.168.1.20:11434`. It wins over `OLLAMA_BASE_URL`. The text of your files is sent to this server. |
+| `embedding_model` | `potion-multilingual-128m` | The embedding model. The model decides where it runs; see the table below. Each model has its own index in the database. `ostra index --model ID` and `ostra search --model ID` override it for one run. |
+| `ollama_base_url` | not set | Address of the Ollama server, for example `http://192.168.1.20:11434`. It wins over `OLLAMA_BASE_URL`. The text of your files is sent to this server. Only the Ollama models use it. |
 
-The Ollama server address comes from the `OLLAMA_BASE_URL` environment variable (default `http://localhost:11434`) unless `ollama_base_url` is set. The model name comes from the model registry. The old `OLLAMA_MODEL` variable is not used any more, and ostra stops with an error when it is set.
+| Model | Runs in | Languages | Dimensions | Notes |
+|---|---|---|---|---|
+| `potion-multilingual-128m` (default) | the ostra process, CPU ([FastEmbed](https://github.com/qdrant/fastembed)) | 100+ | 256 | Static embeddings: hundreds of chunks per second on a laptop CPU. Downloaded once on first use. |
+| `mxbai-embed-large` | Ollama | English | 1024 | Needs `ollama pull mxbai-embed-large`. |
+| `bge-m3` | Ollama | 100+ | 1024 | Needs `ollama pull bge-m3`. |
+
+Config files from earlier versions name `mxbai-embed-large` and keep using it and its existing index. The old `embedding_provider` key is ignored, because the model decides the provider. To move to the default model, set `embedding_model` to `potion-multilingual-128m` and run `ostra index`.
+
+For the Ollama models, the server address comes from the `OLLAMA_BASE_URL` environment variable (default `http://localhost:11434`) unless `ollama_base_url` is set. The model name comes from the model registry. The old `OLLAMA_MODEL` variable is not used any more, and ostra stops with an error when it is set.
 
 ## Usage
 
@@ -173,7 +186,7 @@ src/ostra/
 │   └── ...                search service, index session
 ├── providers/             adapters to outside systems
 │   ├── sources/           DocumentSource (abstract) and the file system source
-│   ├── embeddings/        EmbeddingProvider (abstract, applies query and document prefixes) and the Ollama provider
+│   ├── embeddings/        EmbeddingProvider (abstract, applies query and document prefixes), the FastEmbed and Ollama providers
 │   └── tokenizers/        Tokenizer (abstract) and the tokenizer-file implementation
 ├── repositories/          storage: SqliteChunkStore with one SqliteModelIndex for each embedding model
 │   └── sqlite/            SQLite + sqlite-vec, versioned migrations, one index for each model
@@ -183,7 +196,7 @@ src/ostra/
 
 A source reads documents in its own thread and puts them in a bounded queue. The pipeline takes them from the queue, and it does not know where they come from. A new source, such as notes or email, is one new `DocumentSource` class. The document ID is the key of the stored chunks. The file system source uses the file path.
 
-The services depend on abstract classes (`DocumentSource`, `EmbeddingProvider`, `ChunkSearchIndex`, `ChunkWriteIndex`), not on SQLite or Ollama. A new embedding provider is one builder in `PROVIDER_BUILDERS` of `services/embedding/embedding_model_factory.py`. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py` plus its `tokenizer.json` file under `providers/tokenizers/data/`.
+The services depend on abstract classes (`DocumentSource`, `EmbeddingProvider`, `ChunkSearchIndex`, `ChunkWriteIndex`), not on SQLite or Ollama. A new embedding provider is one name in `EmbeddingProviderName` and one builder in `PROVIDER_BUILDERS` of `services/embedding/embedding_model_factory.py`. A new embedding model is one `EmbeddingModelSpec` in `models/embedding_model_registry.py`, which names its provider, plus its `tokenizer.json` file under `providers/tokenizers/data/`.
 
 ## Development
 
@@ -200,9 +213,9 @@ make check            # lint, format check, type check and tests
 | `make format` | Format the code with ruff |
 | `make typecheck` | Check the types with mypy |
 | `make check` | Run all of the checks above |
-| `make evals v1-baseline` | Run the retrieval evals of the run folder `evals/runs/v1-baseline` (needs Ollama) |
+| `make evals v2-potion-multilingual` | Run the retrieval evals of a run folder, here `evals/runs/v2-potion-multilingual`. `v1-baseline` needs Ollama |
 
-The suite runs 219 tests. The tests do not call Ollama: they use a fake embedding model and a local tokenizer file.
+The suite runs 234 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
 
@@ -212,7 +225,7 @@ CI runs the same checks on Linux, macOS and Windows for each push to `master` an
 
 ## Performance
 
-Measured on the development machine with a local Ollama server:
+Measured on the development machine with `mxbai-embed-large` on a local Ollama server:
 
 | Measure | Result |
 |---|---|
@@ -241,4 +254,4 @@ More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
 
 ostra is released under the [MIT License](LICENSE).
 
-The `mxbai-embed-large-v1` tokenizer file has its own license. See [src/ostra/providers/tokenizers/data/mxbai-embed-large-v1/LICENSE.txt](src/ostra/providers/tokenizers/data/mxbai-embed-large-v1/LICENSE.txt).
+The `potion-multilingual-128M` tokenizer file is MIT licensed by Minish Lab; see its [SOURCE.md](src/ostra/providers/tokenizers/data/potion-multilingual-128M/SOURCE.md). The `mxbai-embed-large-v1` tokenizer file has its own license. See [src/ostra/providers/tokenizers/data/mxbai-embed-large-v1/LICENSE.txt](src/ostra/providers/tokenizers/data/mxbai-embed-large-v1/LICENSE.txt).

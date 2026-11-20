@@ -4,7 +4,6 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS, DEFAULT_DATABASE_PATH
-from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.embedding_model_registry import DEFAULT_EMBEDDING_MODEL, EMBEDDING_MODELS
 
 
@@ -24,7 +23,7 @@ class AppConfig(BaseSettings):
     # None means the default chunk size of the embedding model.
     chunk_size_tokens: int | None = None
     chunk_overlap_tokens: int = DEFAULT_CHUNK_OVERLAP_TOKENS
-    embedding_provider: EmbeddingProviderName = EmbeddingProviderName.OLLAMA
+    # The model decides the provider: the default runs in the ostra process, the Ollama models need a server.
     embedding_model: str = DEFAULT_EMBEDDING_MODEL
     # None means the OLLAMA_BASE_URL environment variable or the local default applies.
     ollama_base_url: str | None = None

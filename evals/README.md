@@ -6,7 +6,7 @@ The evals measure how well the search finds the right document for a question.
 make evals v1-baseline        # same as: uv run python -m evals.runner v1-baseline
 ```
 
-Ollama must be running with the model of the run's `config.json` pulled (`ollama pull mxbai-embed-large`).
+A run with the default model `potion-multilingual-128m` needs nothing else: the model downloads on first use. A run with an Ollama model needs Ollama running with that model pulled (`ollama pull mxbai-embed-large`).
 
 ## Layout
 
@@ -51,11 +51,11 @@ Change one thing per run, so you know what moved the score.
 | Key | Meaning | Default |
 |---|---|---|
 | `dataset` | Folder name in `evals/datasets/`. Required | |
-| `embedding_model` | `mxbai-embed-large` or `bge-m3` | `mxbai-embed-large` |
+| `embedding_model` | `potion-multilingual-128m`, `mxbai-embed-large` or `bge-m3` | `potion-multilingual-128m` |
 | `chunk_size_tokens` | Chunk size in tokens | default of the model (510) |
 | `chunk_overlap_tokens` | Tokens shared by two neighbor chunks | 50 |
 | `search_limit` | Chunks returned by each search. The expected file must be among them to get a rank | 50 |
-| `ollama_base_url` | Address of the Ollama server | `http://localhost:11434` |
+| `ollama_base_url` | Address of the Ollama server, for the Ollama models | `http://localhost:11434` |
 
 A run always uses its own `ostra.db` and its dataset's `data/`, so it never touches your own index, even when
 `OSTRA_` environment variables are set.
