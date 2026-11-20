@@ -6,10 +6,12 @@ import pytest
 from conftest import make_fake_model
 
 from ostra.cli import commands, main
+from ostra.cli.init.prompter import SetupCancelled
 from ostra.cli.parser import build_parser
 from ostra.cli.search_output import MAX_SHORT_TEXT_CHARACTERS
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
+from ostra.repositories.config_repository import load_config
 from ostra.services import index_session
 
 
@@ -265,3 +267,121 @@ def test_main__positional_folder_with_recursive__parses_both():
 
     assert arguments.folders == [Path("/data/notes")]
     assert arguments.recursive is True
+
+
+def test_main__no_recursive_flag__overrides_config(monkeypatch: pytest.MonkeyPatch):
+    """Parse --no-recursive as False and leave the option unset when it is not given."""
+    assert build_parser().parse_args(["index", "--no-recursive"]).recursive is False
+    assert build_parser().parse_args(["index"]).recursive is None
+
+
+def test_main__init__runs_setup_without_opening_the_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Run the setup and skip load_config and the index, which the setup does not need."""
+    setup_calls = []
+
+    def fail_if_called():
+        raise AssertionError("load_config must not run for init")
+
+    monkeypatch.setattr(main, "load_config", fail_if_called)
+    monkeypatch.setattr(commands, "default_config_path", lambda: tmp_path / "config.json")
+    monkeypatch.setattr(
+        commands, "run_setup", lambda prompter, path, directories: setup_calls.append(path) or AppConfig()
+    )
+
+    main.main(["init", "--defaults"])
+
+    assert setup_calls == [tmp_path / "config.json"]
+
+
+def test_main__init_without_terminal__exits_with_hint(monkeypatch: pytest.MonkeyPatch):
+    """Stop with a hint when the input is not a terminal and --defaults is not given."""
+    monkeypatch.setattr(commands.sys.stdin, "isatty", lambda: False)
+
+    with pytest.raises(SystemExit, match="ostra init --defaults"):
+        main.main(["init"])
+
+
+def test_main__init_defaults__writes_config_and_does_not_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Write the config file with the given folder and index nothing."""
+    config_path = tmp_path / "config.json"
+    notes = tmp_path / "notes"
+    monkeypatch.setattr(commands, "default_config_path", lambda: config_path)
+    monkeypatch.setattr(commands, "open_index", lambda *args, **kwargs: pytest.fail("must not index"))
+
+    main.main(["init", "--defaults", "--directory", str(notes)])
+
+    assert json.loads(config_path.read_text())["directories"] == [str(notes)]
+
+
+class AnswerPrompter:
+    """Answer the index question with a fixed answer, or press Ctrl-C."""
+
+    interactive = True
+
+    def __init__(self, answer: bool | None):
+        self._answer = answer
+
+    def confirm(self, message: str, default: bool = True) -> bool:
+        if self._answer is None:
+            raise SetupCancelled
+        return self._answer
+
+
+def _run_init_with_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: bool | None) -> Path:
+    """Run ostra init with a setup that saves one folder, and answer the index question."""
+    config_path = tmp_path / "config.json"
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("alpha beta\n")
+    config_path.write_text(json.dumps({"directories": [str(notes)], "database_path": str(tmp_path / "file.db")}))
+    monkeypatch.setattr(commands.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(commands, "QuestionaryPrompter", lambda: AnswerPrompter(answer))
+    monkeypatch.setattr(commands, "default_config_path", lambda: config_path)
+    monkeypatch.setattr(commands, "run_setup", lambda prompter, path, directories: load_config(path))
+    main.main(["init"])
+    return notes
+
+
+def test_main__init_ctrl_c_at_index_question__returns_quietly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Return without a traceback when the user presses Ctrl-C after the settings are saved."""
+    _run_init_with_folder(monkeypatch, tmp_path, answer=None)
+
+    assert not (tmp_path / "file.db").exists()
+
+
+def test_main__init_index_now__uses_environment_like_ostra_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Index into the database of OSTRA_DATABASE_PATH, as ostra index and ostra search do."""
+    monkeypatch.setenv("OSTRA_DATABASE_PATH", str(tmp_path / "env.db"))
+
+    _run_init_with_folder(monkeypatch, tmp_path, answer=True)
+
+    assert (tmp_path / "env.db").is_file()
+    assert not (tmp_path / "file.db").exists()
+
+
+def test_main__init_index_now_server_down__prints_message(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Print a short message instead of a traceback when the embedding server cannot be reached."""
+
+    def refuse(**kwargs):
+        raise ConnectionError("Failed to connect to Ollama.")
+
+    monkeypatch.setattr(commands, "run_indexing", refuse)
+
+    _run_init_with_folder(monkeypatch, tmp_path, answer=True)
+
+    assert "Indexing stopped: Failed to connect to Ollama." in capsys.readouterr().out
+
+
+def test_main__init_defaults_invalid_config__exits_with_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Exit with an error status when --defaults cannot read the existing config file."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("not json")
+    monkeypatch.setattr(commands, "default_config_path", lambda: config_path)
+
+    with pytest.raises(SystemExit) as raised:
+        main.main(["init", "--defaults"])
+
+    assert raised.value.code == 1
+    assert config_path.read_text() == "not json"

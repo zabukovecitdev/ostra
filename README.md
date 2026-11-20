@@ -109,11 +109,21 @@ uv sync
 ## Quick start
 
 ```bash
-uv sync
-# add your folders to "directories" in the config file
-make run                      # process the configured folders
-make search QUERY="solar system" LIMIT=3
+ostra init                    # choose the model, the folders and the indexing settings step by step
+ostra index                   # process the configured folders
+ostra search "solar system" --limit 3
 ```
+
+`ostra init` asks one question at a time, with the current value as the default:
+
+1. The embedding model.
+2. For an Ollama model, the server address. ostra checks that the server answers and has the model, and prints the `ollama pull` command when it does not.
+3. The folders to index, and whether to include their subfolders.
+4. The chunk settings: the model defaults, or your own chunk size and overlap.
+5. The database location.
+6. On Linux with systemd, whether to index in the background.
+
+It shows a summary and saves the settings only when you confirm. Press Ctrl-C at any time to stop without saving. Run `ostra init` again later to change the settings. `ostra init --defaults --directory ~/notes` saves the settings without questions, for scripts.
 
 ## Configuration
 
@@ -122,7 +132,8 @@ The config file is `config.json` in your user config folder, for example `~/.con
 | Key | Default | Meaning |
 |---|---|---|
 | `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. |
-| `directories` | none | Folders to process. Add at least one before the first run. The top-level `.txt`, `.md` and `.csv` files are read. `ostra index --recursive` reads the subfolders too. |
+| `directories` | none | Folders to process. Add at least one before the first run. The top-level `.txt`, `.md` and `.csv` files are read, and the subfolders too when `recursive` is set. |
+| `recursive` | `false` | Read the files in the subfolders of each folder too. Hidden subfolders, such as `.git`, are skipped. `ostra index --recursive` and `--no-recursive` override it for one run. |
 | `chunk_size_tokens` | not set | Tokens per chunk. When not set, the default of the embedding model applies (510 for every supported model). The value must fit the model input after its special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
 | `embedding_model` | `potion-multilingual-128m` | The embedding model. The model decides where it runs; see the table below. Each model has its own index in the database. `ostra index --model ID` and `ostra search --model ID` override it for one run. |
@@ -142,6 +153,8 @@ For the Ollama models, the server address comes from the `OLLAMA_BASE_URL` envir
 
 | Command | Effect |
 |---|---|
+| `ostra init` | Set up the model, the Ollama connection, the folders and the indexing settings step by step |
+| `ostra init --defaults` | Save the current settings, or the defaults, without questions. Add `--directory PATH` to add a folder |
 | `ostra index` | Embed and store the new or changed chunks of the configured folders |
 | `ostra index --directory PATH` | Index one or more folders instead of the configured ones. Repeat the option for more folders. |
 | `ostra index --reindex` | Embed every chunk again, even those already stored |
@@ -179,10 +192,12 @@ The SQLite database uses write-ahead logging, so `ostra search` works while the 
 ```
 src/ostra/
 ├── cli/                   command line: parser, command handlers, search output, progress bar; ostra-daemon
+│   └── init/              ostra init: the setup steps, and the Prompter with its questionary implementation
 ├── services/
 │   ├── ingestion/         pipeline, runner, text chunker, source factory, run_indexing
 │   ├── embedding/         EmbeddingModel bundle, provider registry and model factory
 │   ├── daemon/            background indexer loop and systemd service
+│   ├── setup/             Ollama server check for ostra init
 │   └── ...                search service, index session
 ├── providers/             adapters to outside systems
 │   ├── sources/           DocumentSource (abstract) and the file system source
@@ -215,7 +230,7 @@ make check            # lint, format check, type check and tests
 | `make check` | Run all of the checks above |
 | `make evals v2-potion-multilingual` | Run the retrieval evals of a run folder, here `evals/runs/v2-potion-multilingual`. `v1-baseline` needs Ollama |
 
-The suite runs 234 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files.
+The suite runs 269 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra init` tests answer the questions with a scripted prompter.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
 

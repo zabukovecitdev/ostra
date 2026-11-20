@@ -52,6 +52,49 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         logger.info("Config file not found. Creating it. Path=%s", config_path)
         _write_default_config(config_path)
 
+    file_values = _read_file_values(config_path)
+    try:
+        return AppConfig(**file_values)
+    except ValidationError as error:
+        raise ValueError(f"Config file has invalid settings. Path={config_path}\n{error}") from error
+
+
+def read_config_file(config_path: Path) -> AppConfig | None:
+    """Read the settings of the config file alone, without the OSTRA_ environment variables.
+
+    Unlike load_config, it does not create a missing file.
+
+    Args:
+        config_path: Location of the JSON config file.
+
+    Returns:
+        The settings of the file, or None when the file does not exist.
+
+    Raises:
+        ValueError: When the config file does not contain a valid JSON object or when a setting is not valid.
+    """
+    if not config_path.exists():
+        return None
+
+    file_values = _read_file_values(config_path)
+    try:
+        return AppConfig.from_file_values(file_values)
+    except ValidationError as error:
+        raise ValueError(f"Config file has invalid settings. Path={config_path}\n{error}") from error
+
+
+def _read_file_values(config_path: Path) -> dict:
+    """Read the JSON object of the config file.
+
+    Args:
+        config_path: Location of the JSON config file.
+
+    Returns:
+        The keys and values of the file.
+
+    Raises:
+        ValueError: When the file does not contain a valid JSON object.
+    """
     try:
         file_values = json.loads(config_path.read_text())
     except json.JSONDecodeError as error:
@@ -60,10 +103,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     if not isinstance(file_values, dict):
         raise ValueError(f"Config file must contain a JSON object. Path={config_path}")
 
-    try:
-        return AppConfig(**file_values)
-    except ValidationError as error:
-        raise ValueError(f"Config file has invalid settings. Path={config_path}\n{error}") from error
+    return file_values
 
 
 def save_config(config: AppConfig, config_path: Path | None = None) -> None:

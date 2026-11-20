@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
@@ -20,6 +21,8 @@ class AppConfig(BaseSettings):
 
     database_path: Path = DEFAULT_DATABASE_PATH
     directories: list[Path] = Field(default_factory=list)
+    # Index the files in the subfolders of the folders too. The --recursive option overrides it for one run.
+    recursive: bool = False
     # None means the default chunk size of the embedding model.
     chunk_size_tokens: int | None = None
     chunk_overlap_tokens: int = DEFAULT_CHUNK_OVERLAP_TOKENS
@@ -39,6 +42,20 @@ class AppConfig(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Let an environment variable override the values that the config file passes as keyword arguments."""
         return env_settings, init_settings
+
+    @classmethod
+    def from_file_values(cls, values: dict[str, Any]) -> AppConfig:
+        """Validate the values of a config file without the OSTRA_ environment variables.
+
+        The setup uses it, so that a temporary environment variable is not written into the config file.
+
+        Args:
+            values: The keys and values of the config file.
+
+        Returns:
+            The settings. A missing key takes its default value.
+        """
+        return _FileValuesConfig(**values)
 
     @field_validator("database_path")
     @classmethod
@@ -69,3 +86,19 @@ class AppConfig(BaseSettings):
             raise ValueError(f"must be one of {', '.join(EMBEDDING_MODELS)}")
 
         return embedding_model
+
+
+class _FileValuesConfig(AppConfig):
+    """Read the settings from the keyword arguments only, without the environment variables."""
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Use the keyword arguments and the defaults only."""
+        return (init_settings,)

@@ -7,7 +7,13 @@ from platformdirs import user_data_path
 
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS, DEFAULT_DATABASE_PATH
 from ostra.models.app_config import AppConfig
-from ostra.repositories.config_repository import DEFAULT_CONFIG_PATH, default_config_path, load_config, save_config
+from ostra.repositories.config_repository import (
+    DEFAULT_CONFIG_PATH,
+    default_config_path,
+    load_config,
+    read_config_file,
+    save_config,
+)
 
 
 def test_load_config__config_file_missing__returns_default_settings(tmp_path: Path):
@@ -27,6 +33,7 @@ def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp
     assert json.loads(config_path.read_text()) == {
         "database_path": str(DEFAULT_DATABASE_PATH),
         "directories": [],
+        "recursive": False,
         "chunk_overlap_tokens": 50,
         "embedding_model": "potion-multilingual-128m",
     }
@@ -290,3 +297,32 @@ def test_load_config__file_is_not_an_object__raises_value_error(tmp_path: Path):
 
     with pytest.raises(ValueError, match="must contain a JSON object"):
         load_config(config_path)
+
+
+def test_read_config_file__file_missing__returns_none_and_creates_nothing(tmp_path: Path):
+    """Return None and leave the file missing."""
+    config_path = tmp_path / "config.json"
+
+    assert read_config_file(config_path) is None
+    assert not config_path.exists()
+
+
+def test_read_config_file__environment_variable_set__ignores_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Read the value of the file, not the OSTRA_ environment variable."""
+    monkeypatch.setenv("OSTRA_EMBEDDING_MODEL", "bge-m3")
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"embedding_model": "mxbai-embed-large", "recursive": true}')
+
+    config = read_config_file(config_path)
+
+    assert config is not None
+    assert (config.embedding_model, config.recursive) == ("mxbai-embed-large", True)
+
+
+def test_read_config_file__invalid_value__raises_value_error(tmp_path: Path):
+    """Raise a ValueError that names the file when a setting is not valid."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"embedding_model": "unknown"}')
+
+    with pytest.raises(ValueError, match="invalid settings"):
+        read_config_file(config_path)
