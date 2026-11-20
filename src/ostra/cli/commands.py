@@ -1,7 +1,11 @@
 import argparse
 import sys
+from pathlib import Path
 
-from ostra.cli.init.prompter import DefaultsPrompter, Prompter
+import httpx
+from ollama import ResponseError
+
+from ostra.cli.init.prompter import DefaultsPrompter, Prompter, SetupCancelled
 from ostra.cli.init.questionary_prompter import QuestionaryPrompter
 from ostra.cli.init.wizard import run_setup
 from ostra.cli.progress import ProgressReporter
@@ -9,7 +13,7 @@ from ostra.cli.search_output import SearchOutputOptions, print_search_results
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.providers.sources.document_source import DocumentSource
-from ostra.repositories.config_repository import default_config_path
+from ostra.repositories.config_repository import default_config_path, load_config
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.index_session import IndexSession, open_index
 from ostra.services.ingestion.indexing_service import run_indexing
@@ -48,13 +52,39 @@ def run_init(arguments: argparse.Namespace) -> None:
         raise SystemExit("ostra init needs a terminal. Use ostra init --defaults, or edit the config file.")
 
     prompter: Prompter = DefaultsPrompter() if arguments.defaults else QuestionaryPrompter()
-    config = run_setup(prompter, default_config_path(), directories=arguments.directory or [])
+    config_path = default_config_path()
+    config = run_setup(prompter, config_path, directories=arguments.directory or [])
+    if config is None and arguments.defaults:
+        raise SystemExit(1)
+
     if config is None or arguments.defaults or not config.directories:
         return
 
-    if prompter.confirm("Index the folders now?", default=True):
+    _offer_first_index(prompter, config_path)
+
+
+def _offer_first_index(prompter: Prompter, config_path: Path) -> None:
+    """Ask whether to index the folders now, and index them with the saved settings.
+
+    The settings are read again with load_config, so that the OSTRA_ environment variables apply as they do for
+    ostra index. A server that cannot be reached stops the run with a message, not a traceback.
+
+    Args:
+        prompter: Asks the question.
+        config_path: The saved config file.
+    """
+    try:
+        if not prompter.confirm("Index the folders now?", default=True):
+            return
+    except SetupCancelled:
+        return
+
+    config = load_config(config_path)
+    try:
         with open_index(config, create=True) as session:
             _index_with_progress(config, session, build_sources(config))
+    except (ConnectionError, httpx.HTTPError, ResponseError) as error:
+        print(f"Indexing stopped: {error}\nCheck the Ollama server, then run ostra index.")
 
 
 def _index_with_progress(

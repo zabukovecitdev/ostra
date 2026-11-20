@@ -53,7 +53,10 @@ def test_check_ollama__other_tag_only__reports_missing():
     assert (status.reachable, status.model_present) == (True, False)
 
 
-@pytest.mark.parametrize("error", [ConnectionError("refused"), httpx.ConnectTimeout("timed out")])
+@pytest.mark.parametrize(
+    "error",
+    [ConnectionError("refused"), httpx.ConnectTimeout("timed out"), ValueError("not an Ollama answer")],
+)
 def test_check_ollama__server_down__reports_unreachable(error: Exception):
     """Report the server as unreachable with the error text."""
     FakeClient.error = error

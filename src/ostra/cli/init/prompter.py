@@ -27,6 +27,9 @@ class Prompter(ABC):
     Each method raises SetupCancelled when the user stops the setup, for example with Ctrl-C.
     """
 
+    # False when no person answers, so that a step does not wait for a decision that never comes.
+    interactive = True
+
     @abstractmethod
     def select(self, message: str, choices: Sequence[Choice], default: str | None = None) -> str:
         """Let the user pick one choice and return its value."""
@@ -68,6 +71,8 @@ class Prompter(ABC):
 
 class DefaultsPrompter(Prompter):
     """Answer every question with its default, for a setup without questions."""
+
+    interactive = False
 
     def select(self, message: str, choices: Sequence[Choice], default: str | None = None) -> str:
         """Return the default choice, or the first choice when there is no default."""

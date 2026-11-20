@@ -52,7 +52,9 @@ class ScriptedPrompter(Prompter):
         return not self._answers
 
 
-def make_services(statuses: Sequence[OllamaStatus] = (), systemd: bool = False) -> tuple[SetupServices, list]:
+def make_services(
+    statuses: Sequence[OllamaStatus] = (), systemd: bool = False, installed: bool = False
+) -> tuple[SetupServices, list]:
     """Build fake outside systems and a list that records the calls."""
     calls: list = []
     remaining = list(statuses)
@@ -65,7 +67,12 @@ def make_services(statuses: Sequence[OllamaStatus] = (), systemd: bool = False) 
         calls.append(("install", interval))
         return "Service installed."
 
-    services = SetupServices(check_ollama=check, daemon_supported=lambda: systemd, install_daemon=install)
+    services = SetupServices(
+        check_ollama=check,
+        daemon_supported=lambda: systemd,
+        daemon_installed=lambda: installed,
+        install_daemon=install,
+    )
     return services, calls
 
 
@@ -158,14 +165,38 @@ def test_run_setup__overlap_not_below_chunk_size__asks_again(tmp_path: Path):
 
 
 def test_run_setup__ollama_model_present__saves_address(tmp_path: Path):
-    """Check the Ollama server for the model and save its address."""
+    """Check the Ollama server for the model and save an address other than the default."""
     services, calls = make_services([OllamaStatus(reachable=True, model_present=True)])
-    prompter = ScriptedPrompter(["bge-m3", "http://localhost:11434", "", False, True, True, True])
+    prompter = ScriptedPrompter(["bge-m3", "http://gpu-box:11434", "", False, True, True, True])
 
     config = run_setup(prompter, tmp_path / "config.json", services)
 
-    assert config is not None and config.ollama_base_url == "http://localhost:11434"
+    assert config is not None and config.ollama_base_url == "http://gpu-box:11434"
+    assert calls == [("check", "http://gpu-box:11434", "bge-m3:latest")]
+
+
+def test_run_setup__default_ollama_address_kept__saves_no_address(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Save no address when the user keeps the default, so that OLLAMA_BASE_URL keeps working later."""
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    services, calls = make_services([OllamaStatus(reachable=True, model_present=True)])
+    prompter = ScriptedPrompter(["bge-m3", KEEP, "", False, True, True, True])
+
+    run_setup(prompter, tmp_path / "config.json", services)
+
+    assert "ollama_base_url" not in read(tmp_path / "config.json")
     assert calls == [("check", "http://localhost:11434", "bge-m3:latest")]
+
+
+def test_run_setup__defaults_with_unreachable_ollama__checks_once_and_saves(tmp_path: Path):
+    """Check the server once and go on when no person can choose what to do next."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"embedding_model": "bge-m3"}))
+    services, calls = make_services([OllamaStatus(reachable=False, error="refused")])
+
+    config = run_setup(DefaultsPrompter(), config_path, services)
+
+    assert config is not None
+    assert len(calls) == 1
 
 
 def test_run_setup__ollama_model_missing__prints_pull_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
@@ -264,12 +295,64 @@ def test_run_setup__defaults_with_directory__saves_folder_once(tmp_path: Path):
     assert config is not None and config.directories == [notes, tmp_path / "more"]
 
 
-def test_run_setup__invalid_config_file__starts_from_defaults(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
-    """Start from the defaults when the existing config file cannot be read."""
+def test_run_setup__invalid_config_without_questions__keeps_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    """Leave a config file that cannot be read unchanged when no person can agree to replace it."""
     config_path = tmp_path / "config.json"
     config_path.write_text("not json")
 
-    config = run_setup(DefaultsPrompter(), config_path, make_services()[0])
-
-    assert config is not None
+    assert run_setup(DefaultsPrompter(), config_path, make_services()[0]) is None
+    assert config_path.read_text() == "not json"
     assert "could not be read" in capsys.readouterr().out
+
+
+def test_run_setup__invalid_config_user_keeps_it__saves_nothing(tmp_path: Path):
+    """Cancel when the user does not want to replace a config file that cannot be read."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"chunk_size_tokens": "abc"}')
+
+    assert run_setup(ScriptedPrompter([False]), config_path, make_services()[0]) is None
+    assert config_path.read_text() == '{"chunk_size_tokens": "abc"}'
+
+
+def test_run_setup__invalid_config_user_replaces_it__saves_new_settings(tmp_path: Path):
+    """Start from the defaults and save when the user agrees to replace the file."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("not json")
+    prompter = ScriptedPrompter([True, KEEP, "", False, True, True, True])
+
+    assert run_setup(prompter, config_path, make_services()[0]) is not None
+    assert read(config_path)["embedding_model"] == "potion-multilingual-128m"
+
+
+def test_run_setup__configured_folders_replaced__keeps_given_folders(tmp_path: Path):
+    """Keep the folders of the --directory option when the user drops the configured folders."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"directories": [str(tmp_path / "old")]}))
+    prompter = ScriptedPrompter([KEEP, False, "", False, True, True, True])
+
+    config = run_setup(prompter, config_path, make_services()[0], directories=[tmp_path / "given"])
+
+    assert config is not None and config.directories == [tmp_path / "given"]
+
+
+def test_run_setup__service_installed_and_kept_off__tells_how_to_remove(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    """Offer yes as the default when the service exists, and say how to remove it when the answer is no."""
+    services, calls = make_services(systemd=True, installed=True)
+    prompter = ScriptedPrompter([KEEP, "", False, True, True, False, True])
+
+    run_setup(prompter, tmp_path / "config.json", services)
+
+    assert calls == []
+    assert "ostra-daemon uninstall" in capsys.readouterr().out
+
+
+def test_run_setup__service_installed__defaults_to_keeping_it(tmp_path: Path):
+    """Reinstall the service with the chosen interval when the user keeps the default yes."""
+    services, calls = make_services(systemd=True, installed=True)
+    prompter = ScriptedPrompter([KEEP, "", False, True, True, KEEP, "20", True])
+
+    run_setup(prompter, tmp_path / "config.json", services)
+
+    assert calls == [("install", 20)]

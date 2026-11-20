@@ -28,7 +28,8 @@ def check_ollama(base_url: str, provider_model: str) -> OllamaStatus:
     """
     try:
         response = Client(host=base_url, timeout=CONNECT_TIMEOUT_SECONDS).list()
-    except (ConnectionError, httpx.HTTPError, ResponseError) as error:
+    # ValueError covers an answer that is not an Ollama model list, from a server that is not Ollama.
+    except (ConnectionError, httpx.HTTPError, ResponseError, ValueError) as error:
         return OllamaStatus(reachable=False, error=str(error))
 
     names = {_with_tag(model.model) for model in response.models if model.model}

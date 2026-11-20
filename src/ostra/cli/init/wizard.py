@@ -24,17 +24,16 @@ def run_setup(
         prompter: Asks the questions.
         config_path: The config file to read the current values from and to write.
         services: The outside systems. None means the real Ollama server and systemd.
-        directories: Folders to add before the questions, from the --directory option.
+        directories: Folders to add to the configured ones, from the --directory option.
         steps: The setup steps, in order.
 
     Returns:
         The saved settings, or None when the user cancelled. Nothing is saved then.
     """
     _print_welcome(config_path)
-    draft = SetupDraft.from_config(_current_config(config_path))
-    _add_directories(draft, directories)
-    context = SetupContext(prompter, draft, config_path, services or SetupServices())
     try:
+        draft = SetupDraft.from_config(_current_config(prompter, config_path))
+        context = SetupContext(prompter, draft, config_path, services or SetupServices(), list(directories))
         for step in steps:
             step(context)
     except SetupCancelled:
@@ -57,13 +56,16 @@ def _print_welcome(config_path: Path) -> None:
         print(f"These environment variables override the saved settings: {', '.join(overrides)}\n")
 
 
-def _current_config(config_path: Path) -> AppConfig:
-    """Return the settings of the config file, or the defaults when it is missing or not valid."""
+def _current_config(prompter: Prompter, config_path: Path) -> AppConfig:
+    """Return the settings of the config file, or the defaults when there is no file.
+
+    Raises:
+        SetupCancelled: When the file is not valid and the user does not want to replace it.
+    """
     try:
         config = read_config_file(config_path)
     except ValueError as error:
-        print(f"The config file could not be read, so the questions start from the defaults.\n{error}\n")
-        return AppConfig.from_file_values({})
+        return _replace_invalid_config(prompter, error)
 
     if config is None:
         return AppConfig.from_file_values({})
@@ -72,11 +74,24 @@ def _current_config(config_path: Path) -> AppConfig:
     return config
 
 
-def _add_directories(draft: SetupDraft, directories: Sequence[Path]) -> None:
-    """Add the folders of the --directory option that the draft does not have yet."""
-    for folder in (directory.expanduser().absolute() for directory in directories):
-        if folder not in draft.directories:
-            draft.directories.append(folder)
+def _replace_invalid_config(prompter: Prompter, error: ValueError) -> AppConfig:
+    """Ask before a config file that cannot be read is replaced, so that its settings are not lost by accident.
+
+    Returns:
+        The default settings, when the user agrees to replace the file.
+
+    Raises:
+        SetupCancelled: Without a person to ask, or when the user wants to keep the file.
+    """
+    print(f"The config file could not be read.\n{error}\n")
+    if not prompter.interactive:
+        print("Fix or remove the file, then run ostra init again.")
+        raise SetupCancelled
+
+    if not prompter.confirm("Start from the defaults and replace the file when you save?", default=False):
+        raise SetupCancelled
+
+    return AppConfig.from_file_values({})
 
 
 def _install_daemon(context: SetupContext) -> None:

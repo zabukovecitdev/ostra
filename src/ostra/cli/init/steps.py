@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -60,6 +60,7 @@ def choose_folders(context: SetupContext) -> None:
         if not prompter.confirm("Keep these folders?", default=True):
             draft.directories = []
 
+    _add_unique(draft.directories, context.given_directories)
     _add_folders(context)
     if not draft.directories:
         print("No folders yet. Run ostra init again or pass folders to ostra index.")
@@ -109,8 +110,11 @@ def choose_background_indexing(context: SetupContext) -> None:
         return
 
     prompter = context.prompter
-    if not prompter.confirm("Index the folders in the background with a systemd user service?", default=False):
+    installed = context.services.daemon_installed()
+    if not prompter.confirm("Index the folders in the background with a systemd user service?", default=installed):
         context.draft.daemon_interval_minutes = None
+        if installed:
+            print("The background service stays installed. Remove it with: ostra-daemon uninstall")
         return
 
     context.draft.daemon_interval_minutes = prompter.integer(
@@ -155,9 +159,13 @@ def _model_description(spec: EmbeddingModelSpec) -> str:
 def _ask_ollama_address(context: SetupContext) -> None:
     """Ask for the address of the Ollama server and warn when the server is on another machine."""
     draft = context.draft
-    default = draft.ollama_base_url or OllamaSettings().base_url
-    draft.ollama_base_url = context.prompter.text("Ollama server address:", default=default, validate=_check_url)
-    if urlparse(draft.ollama_base_url).hostname not in LOCAL_HOSTS:
+    fallback = OllamaSettings().base_url
+    answer = context.prompter.text(
+        "Ollama server address:", default=draft.ollama_base_url or fallback, validate=_check_url
+    )
+    # Save no address when the answer is the one that applies anyway, so that OLLAMA_BASE_URL keeps working.
+    draft.ollama_base_url = None if answer == fallback else answer
+    if urlparse(answer).hostname not in LOCAL_HOSTS:
         print("The text of your files will be sent to this server to be embedded.")
 
 
@@ -180,16 +188,23 @@ def _check_connection(context: SetupContext) -> str:
     else:
         print(f"Could not reach the Ollama server at {address}. {status.error}".rstrip())
 
+    if not context.prompter.interactive:
+        return CONTINUE
+
     return context.prompter.select("What next?", CONNECTION_CHOICES, default=RETRY)
 
 
 def _add_folders(context: SetupContext) -> None:
     """Ask for folders until the user leaves the answer empty."""
-    draft = context.draft
     while answer := context.prompter.path("Folder to index (leave empty to finish):", validate=_check_folder):
-        folder = _absolute(answer)
-        if folder not in draft.directories:
-            draft.directories.append(folder)
+        _add_unique(context.draft.directories, [_absolute(answer)])
+
+
+def _add_unique(folders: list[Path], new_folders: Sequence[Path]) -> None:
+    """Add the new folders that the list does not have yet, as absolute paths."""
+    for folder in (_absolute(str(new_folder)) for new_folder in new_folders):
+        if folder not in folders:
+            folders.append(folder)
 
 
 def _summary(draft: SetupDraft) -> str:
