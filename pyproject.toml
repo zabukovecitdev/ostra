@@ -31,7 +31,6 @@ dependencies = [
 
 [project.scripts]
 ostra = "ostra.cli.main:main"
-ostra-daemon = "ostra.cli.daemon:main"
 
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]

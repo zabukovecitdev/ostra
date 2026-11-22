@@ -1,4 +1,5 @@
 import argparse
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -7,7 +8,7 @@ from ollama import ResponseError
 
 from ostra.cli.init.prompter import DefaultsPrompter, Prompter, SetupCancelled
 from ostra.cli.init.questionary_prompter import QuestionaryPrompter
-from ostra.cli.init.wizard import run_setup
+from ostra.cli.init.wizard import SetupResult, run_setup
 from ostra.cli.progress import ProgressReporter
 from ostra.cli.search_output import SearchOutputOptions, print_search_results
 from ostra.constants import NO_DIRECTORIES_MESSAGE
@@ -40,51 +41,80 @@ def run_index(arguments: argparse.Namespace, config: AppConfig, session: IndexSe
 
 
 def run_init(arguments: argparse.Namespace) -> None:
-    """Ask the setup questions, save the settings and offer to index the folders right away.
+    """Ask the setup questions, save the settings and index the folders when a change needs it.
 
     Args:
         arguments: The parsed init arguments.
 
     Raises:
-        SystemExit: When the questions cannot be asked, because the input is not a terminal.
+        SystemExit: When the questions cannot be asked, because the input is not a terminal; with status 2 when a
+            --directory path is not a folder; with status 1 when --defaults cannot save the settings.
     """
     if not (arguments.defaults or sys.stdin.isatty()):
         raise SystemExit("ostra init needs a terminal. Use ostra init --defaults, or edit the config file.")
 
+    given = arguments.directory or []
+    _require_folders(given)
     prompter: Prompter = DefaultsPrompter() if arguments.defaults else QuestionaryPrompter()
     config_path = default_config_path()
-    config = run_setup(prompter, config_path, directories=arguments.directory or [])
-    if config is None and arguments.defaults:
+    result = run_setup(prompter, config_path, directories=given)
+    if result is None and arguments.defaults:
         raise SystemExit(1)
 
-    if config is None or arguments.defaults or not config.directories:
+    if result is None or not (result.index_changes and result.config.directories):
         return
 
-    _offer_first_index(prompter, config_path)
+    if arguments.defaults or not _confirm_index(prompter):
+        _print_index_reminder(result)
+        return
+
+    _index_saved_settings(config_path)
 
 
-def _offer_first_index(prompter: Prompter, config_path: Path) -> None:
-    """Ask whether to index the folders now, and index them with the saved settings.
+def _require_folders(folders: list[Path]) -> None:
+    """Stop before any question when a --directory path is not an existing folder.
 
-    The settings are read again with load_config, so that the OSTRA_ environment variables apply as they do for
-    ostra index. A server that cannot be reached stops the run with a message, not a traceback.
+    Raises:
+        SystemExit: With status 2, as for any other invalid option, naming the paths.
+    """
+    missing = [str(folder) for folder in folders if not folder.expanduser().is_dir()]
+    if missing:
+        print(f"ostra init: not an existing folder: {', '.join(missing)}", file=sys.stderr)
+        raise SystemExit(2)
+
+
+def _confirm_index(prompter: Prompter) -> bool:
+    """Ask whether to index now. Ctrl-C counts as no, because the settings are already saved."""
+    try:
+        return prompter.confirm("Index now to apply the changes?", default=True)
+    except SetupCancelled:
+        return False
+
+
+def _print_index_reminder(result: SetupResult) -> None:
+    """Tell the user to run ostra index, and why searches may find nothing until then."""
+    print(f"Run ostra index to apply the changes ({', '.join(result.index_changes)}).")
+    if result.model_changed:
+        print("Searches with the new model find nothing until then.")
+
+
+def _index_saved_settings(config_path: Path) -> None:
+    """Index the configured folders with the saved settings, and report a failure without a traceback.
+
+    The settings are read with load_config, so that the OSTRA_ environment variables apply as they do for
+    ostra index and ostra search.
 
     Args:
-        prompter: Asks the question.
         config_path: The saved config file.
     """
     try:
-        if not prompter.confirm("Index the folders now?", default=True):
-            return
-    except SetupCancelled:
-        return
-
-    config = load_config(config_path)
-    try:
+        config = load_config(config_path)
         with open_index(config, create=True) as session:
             _index_with_progress(config, session, build_sources(config))
     except (ConnectionError, httpx.HTTPError, ResponseError) as error:
         print(f"Indexing stopped: {error}\nCheck the Ollama server, then run ostra index.")
+    except (ValueError, sqlite3.Error) as error:
+        print(f"Indexing stopped: {error}\nFix the problem, then run ostra index.")
 
 
 def _index_with_progress(
