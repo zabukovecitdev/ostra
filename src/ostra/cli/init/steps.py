@@ -2,14 +2,13 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from urllib.parse import urlparse
 
-from ostra.cli.daemon import DEFAULT_INTERVAL_MINUTES
 from ostra.cli.init.draft import SetupContext, SetupDraft
 from ostra.cli.init.prompter import Choice, SetupCancelled
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS, get_model_spec
 from ostra.models.embedding_model_spec import EmbeddingModelSpec
-from ostra.models.ollama_settings import OllamaSettings
+from ostra.models.ollama_settings import DEFAULT_OLLAMA_BASE_URL, OllamaSettings
 from ostra.services.setup.ollama_check import pull_command
 
 SetupStep = Callable[[SetupContext], None]
@@ -104,31 +103,13 @@ def choose_database(context: SetupContext) -> None:
         draft.database_path = _absolute(answer)
 
 
-def choose_background_indexing(context: SetupContext) -> None:
-    """Offer to index in the background with a systemd user service. Skip systems without systemd."""
-    if not context.services.daemon_supported():
-        return
-
-    prompter = context.prompter
-    installed = context.services.daemon_installed()
-    if not prompter.confirm("Index the folders in the background with a systemd user service?", default=installed):
-        context.draft.daemon_interval_minutes = None
-        if installed:
-            print("The background service stays installed. Remove it with: ostra-daemon uninstall")
-        return
-
-    context.draft.daemon_interval_minutes = prompter.integer(
-        "Minutes between indexing runs:", default=DEFAULT_INTERVAL_MINUTES, validate=_range_check(1, 24 * 60)
-    )
-
-
 def confirm_summary(context: SetupContext) -> None:
     """Show the answers and ask whether to save them.
 
     Raises:
         SetupCancelled: When the user does not want to save.
     """
-    print(_summary(context.draft))
+    print(_summary(context.draft, context.index_changes()))
     if not context.prompter.confirm(f"Save these settings to {context.config_path}?", default=True):
         raise SetupCancelled
 
@@ -139,7 +120,6 @@ SETUP_STEPS: tuple[SetupStep, ...] = (
     choose_folders,
     choose_indexing_settings,
     choose_database,
-    choose_background_indexing,
     confirm_summary,
 )
 
@@ -159,12 +139,12 @@ def _model_description(spec: EmbeddingModelSpec) -> str:
 def _ask_ollama_address(context: SetupContext) -> None:
     """Ask for the address of the Ollama server and warn when the server is on another machine."""
     draft = context.draft
-    fallback = OllamaSettings().base_url
     answer = context.prompter.text(
-        "Ollama server address:", default=draft.ollama_base_url or fallback, validate=_check_url
+        "Ollama server address:", default=draft.ollama_base_url or OllamaSettings().base_url, validate=_check_url
     )
-    # Save no address when the answer is the one that applies anyway, so that OLLAMA_BASE_URL keeps working.
-    draft.ollama_base_url = None if answer == fallback else answer
+    # Save the built-in local address as no address, so that OLLAMA_BASE_URL can still choose a server later. Save
+    # any other address, also one from OLLAMA_BASE_URL, so that a shell without the variable uses it too.
+    draft.ollama_base_url = None if answer == DEFAULT_OLLAMA_BASE_URL else answer
     if urlparse(answer).hostname not in LOCAL_HOSTS:
         print("The text of your files will be sent to this server to be embedded.")
 
@@ -207,8 +187,8 @@ def _add_unique(folders: list[Path], new_folders: Sequence[Path]) -> None:
             folders.append(folder)
 
 
-def _summary(draft: SetupDraft) -> str:
-    """Describe the answers, one setting per line."""
+def _summary(draft: SetupDraft, changes: tuple[str, ...]) -> str:
+    """Describe the answers, one setting per line, and the changes that need indexing."""
     chunk_size = draft.chunk_size_tokens or f"model default ({_model(draft).default_chunk_size_tokens})"
     rows: list[tuple[str, object]] = [
         ("Model", draft.embedding_model),
@@ -220,8 +200,8 @@ def _summary(draft: SetupDraft) -> str:
     ]
     if _model(draft).provider is EmbeddingProviderName.OLLAMA:
         rows.insert(1, ("Ollama server", draft.ollama_base_url or OllamaSettings().base_url))
-    if draft.daemon_interval_minutes is not None:
-        rows.append(("Background indexing", f"every {draft.daemon_interval_minutes} minutes"))
+    if changes:
+        rows.append(("Needs ostra index", ", ".join(changes)))
 
     return "\nSummary\n" + "\n".join(f"  {name:<20}{value}" for name, value in rows)
 
