@@ -1,8 +1,9 @@
 import os
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
-from ostra.cli.init.draft import SetupContext, SetupDraft, SetupServices
+from ostra.cli.init.draft import MODEL_CHANGE, SetupContext, SetupDraft, SetupServices
 from ostra.cli.init.prompter import Prompter, SetupCancelled
 from ostra.cli.init.steps import SETUP_STEPS, SetupStep
 from ostra.models.app_config import AppConfig
@@ -11,29 +12,46 @@ from ostra.repositories.config_repository import read_config_file, save_config
 ENVIRONMENT_PREFIX = "OSTRA_"
 
 
+@dataclass(frozen=True)
+class SetupResult:
+    """The saved settings and what the user must do so that the index follows them."""
+
+    config: AppConfig
+    # The names of the changed settings that need a run of ostra index, such as model or chunk size.
+    index_changes: tuple[str, ...]
+
+    @property
+    def model_changed(self) -> bool:
+        """Tell whether the model changed, so that searches find nothing until the new index is filled."""
+        return MODEL_CHANGE in self.index_changes
+
+
 def run_setup(
     prompter: Prompter,
     config_path: Path,
     services: SetupServices | None = None,
     directories: Sequence[Path] = (),
     steps: Sequence[SetupStep] = SETUP_STEPS,
-) -> AppConfig | None:
-    """Ask the setup questions, save the settings and install the background service when chosen.
+) -> SetupResult | None:
+    """Ask the setup questions and save the settings.
 
     Args:
         prompter: Asks the questions.
         config_path: The config file to read the current values from and to write.
-        services: The outside systems. None means the real Ollama server and systemd.
+        services: The outside systems. None means the real Ollama server.
         directories: Folders to add to the configured ones, from the --directory option.
         steps: The setup steps, in order.
 
     Returns:
-        The saved settings, or None when the user cancelled. Nothing is saved then.
+        The saved settings and the changes that need indexing, or None when the user cancelled. Nothing is
+        saved then.
     """
     _print_welcome(config_path)
     try:
         draft = SetupDraft.from_config(_current_config(prompter, config_path))
-        context = SetupContext(prompter, draft, config_path, services or SetupServices(), list(directories))
+        context = SetupContext(
+            prompter, draft, config_path, services or SetupServices(), list(directories), starting=draft.copy()
+        )
         for step in steps:
             step(context)
     except SetupCancelled:
@@ -43,15 +61,14 @@ def run_setup(
     config = draft.to_config()
     save_config(config, config_path)
     print(f"Settings saved to {config_path}.")
-    _install_daemon(context)
-    return config
+    return SetupResult(config=config, index_changes=context.index_changes())
 
 
 def _print_welcome(config_path: Path) -> None:
     """Greet the user and warn about environment variables that override the saved settings."""
     print("Welcome to ostra. This setup writes your settings to the config file.")
     print("Press Ctrl-C at any time to stop without saving.\n")
-    overrides = sorted(name for name in os.environ if name.startswith(ENVIRONMENT_PREFIX))
+    overrides = sorted(name for name in os.environ if name.upper().startswith(ENVIRONMENT_PREFIX))
     if overrides:
         print(f"These environment variables override the saved settings: {', '.join(overrides)}\n")
 
@@ -92,15 +109,3 @@ def _replace_invalid_config(prompter: Prompter, error: ValueError) -> AppConfig:
         raise SetupCancelled
 
     return AppConfig.from_file_values({})
-
-
-def _install_daemon(context: SetupContext) -> None:
-    """Install the background service when the user chose it, and report a failure without raising."""
-    interval = context.draft.daemon_interval_minutes
-    if interval is None:
-        return
-
-    try:
-        print(context.services.install_daemon(interval))
-    except (RuntimeError, OSError) as error:
-        print(f"The background service was not installed: {error}")

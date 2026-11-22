@@ -29,7 +29,7 @@ Everything runs on your machine. No text leaves it.
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Usage](#usage)
-- [Background indexing (Linux)](#background-indexing-linux)
+- [Upgrading from a version with ostra-daemon](#upgrading-from-a-version-with-ostra-daemon)
 - [Architecture](#architecture)
 - [Development](#development)
 - [Evals](#evals)
@@ -46,7 +46,6 @@ Everything runs on your machine. No text leaves it.
 - **One index for each model.** Vectors of two models never mix, so you can compare models on the same files.
 - **Vector search** with cosine distance, from the command line, with plain text or JSON output.
 - **SQLite storage with `sqlite-vec`.** One database holds an index for each embedding model, with versioned migrations.
-- **Background indexing** as a systemd user service.
 - **Owner-only file permissions** on the database, the config file and their folders. Linux and macOS apply these modes. On Windows they have no effect.
 
 ## How it works
@@ -121,9 +120,10 @@ ostra search "solar system" --limit 3
 3. The folders to index, and whether to include their subfolders.
 4. The chunk settings: the model defaults, or your own chunk size and overlap.
 5. The database location.
-6. On Linux with systemd, whether to index in the background.
 
 It shows a summary and saves the settings only when you confirm. Press Ctrl-C at any time to stop without saving. Run `ostra init` again later to change the settings. `ostra init --defaults --directory ~/notes` saves the settings without questions, for scripts.
+
+ostra indexes only when you run `ostra index`. A change of the model, the folders, the subfolder setting, the chunk settings or the database needs a run of `ostra index` to reach the index. The summary of `ostra init` lists these changes, and after saving it offers to index right away. A plain `ostra index` is enough: it embeds the new chunks and removes the outdated chunks of each file it reads. `--reindex` is only needed to embed unchanged chunks again. After a model change, searches find nothing until `ostra index` has filled the index of the new model.
 
 ## Configuration
 
@@ -175,28 +175,25 @@ make search QUERY="transformer attention" LIMIT=3
 make help             # list every target
 ```
 
-## Background indexing (Linux)
+## Upgrading from a version with ostra-daemon
 
-`ostra-daemon` indexes the configured folders in a loop. It reads the config file again on each run. It logs the result of each run.
+Earlier versions had an `ostra-daemon` command that indexed in the background as a systemd user service. It has been removed: run `ostra index` after you change files or settings. If you installed the service, remove it, because systemd keeps restarting a command that no longer exists. Before you upgrade, run `ostra-daemon uninstall`. After an upgrade, run:
 
-| Command | Effect |
-|---|---|
-| `ostra-daemon` | Run the loop in the foreground. Default interval is 15 minutes. |
-| `ostra-daemon install --interval 10` | Install and start a systemd user service |
-| `ostra-daemon uninstall` | Stop and remove the service |
-
-The SQLite database uses write-ahead logging, so `ostra search` works while the daemon writes.
+```bash
+systemctl --user disable --now ostra-daemon.service
+rm ~/.config/systemd/user/ostra-daemon.service
+systemctl --user daemon-reload
+```
 
 ## Architecture
 
 ```
 src/ostra/
-├── cli/                   command line: parser, command handlers, search output, progress bar; ostra-daemon
+├── cli/                   command line: parser, command handlers, search output, progress bar
 │   └── init/              ostra init: the setup steps, and the Prompter with its questionary implementation
 ├── services/
 │   ├── ingestion/         pipeline, runner, text chunker, source factory, run_indexing
 │   ├── embedding/         EmbeddingModel bundle, provider registry and model factory
-│   ├── daemon/            background indexer loop and systemd service
 │   ├── setup/             Ollama server check for ostra init
 │   └── ...                search service, index session
 ├── providers/             adapters to outside systems
@@ -230,7 +227,7 @@ make check            # lint, format check, type check and tests
 | `make check` | Run all of the checks above |
 | `make evals v2-potion-multilingual` | Run the retrieval evals of a run folder, here `evals/runs/v2-potion-multilingual`. `v1-baseline` needs Ollama |
 
-The suite runs 269 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra init` tests answer the questions with a scripted prompter.
+The suite runs 283 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra init` tests answer the questions with a scripted prompter.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
 
@@ -253,15 +250,13 @@ More detail is in [reports/embedding-timing.md](reports/embedding-timing.md).
 
 ## Known limitations
 
-- Subfolders are read only with `ostra index --recursive`. The background indexer reads the top-level files only.
 - Only plain text formats are read. PDF and Office files are skipped.
-- A moved file is embedded again, and the rows of deleted files are not removed.
+- A moved file is embedded again, and the rows of deleted files, and of folders removed from the settings, are not removed.
 - The chunk digests are SHA-256 of the chunk text. Identical text in two files is stored once per file path.
 
 ## Roadmap
 
 - Move detection and cleanup for moved and deleted files
-- Recursive folder scanning with an option to turn it on
 - Answer generation that cites the source file of each chunk
 - A content-addressed chunk store that shares vectors between identical text
 

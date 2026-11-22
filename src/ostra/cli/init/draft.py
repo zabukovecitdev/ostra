@@ -1,11 +1,22 @@
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ostra.cli.init.prompter import Prompter
 from ostra.models.app_config import AppConfig
-from ostra.services.daemon.systemd_service import install_service, is_supported, unit_path
 from ostra.services.setup.ollama_check import OllamaStatus, check_ollama
+
+# The settings that decide what the index holds, with the name the user sees. A change to one of them needs a run
+# of ostra index. The Ollama address is not one of them: another server with the same model makes the same vectors.
+MODEL_CHANGE = "model"
+INDEX_SETTING_NAMES = {
+    "embedding_model": MODEL_CHANGE,
+    "directories": "folders",
+    "recursive": "subfolders",
+    "chunk_size_tokens": "chunk size",
+    "chunk_overlap_tokens": "chunk overlap",
+    "database_path": "database",
+}
 
 
 @dataclass
@@ -19,12 +30,13 @@ class SetupDraft:
     database_path: Path
     chunk_size_tokens: int | None
     chunk_overlap_tokens: int
-    # Minutes between the runs of the background service, or None to install no service.
-    daemon_interval_minutes: int | None = None
 
     @classmethod
     def from_config(cls, config: AppConfig) -> SetupDraft:
         """Start the draft from the settings, so that each question offers the current value.
+
+        The folders become absolute, so that a relative folder of the file and the same folder typed as an
+        absolute path count as one folder.
 
         Args:
             config: The current settings, or the defaults.
@@ -35,12 +47,16 @@ class SetupDraft:
         return cls(
             embedding_model=config.embedding_model,
             ollama_base_url=config.ollama_base_url,
-            directories=list(config.directories),
+            directories=[folder.absolute() for folder in config.directories],
             recursive=config.recursive,
             database_path=config.database_path,
             chunk_size_tokens=config.chunk_size_tokens,
             chunk_overlap_tokens=config.chunk_overlap_tokens,
         )
+
+    def copy(self) -> SetupDraft:
+        """Return a copy that later answers do not change."""
+        return replace(self, directories=list(self.directories))
 
     def to_config(self) -> AppConfig:
         """Validate the answers as settings, without the OSTRA_ environment variables.
@@ -61,9 +77,25 @@ class SetupDraft:
         )
 
 
-def _service_installed() -> bool:
-    """Tell whether the unit file of the background service exists."""
-    return unit_path().exists()
+def index_changes(before: SetupDraft, after: SetupDraft) -> tuple[str, ...]:
+    """Name the settings that changed and need a run of ostra index to apply.
+
+    Args:
+        before: The settings when the setup started.
+        after: The answers.
+
+    Returns:
+        The names of the changed settings, in a fixed order. The order of the folders does not count.
+    """
+    return tuple(
+        name for key, name in INDEX_SETTING_NAMES.items() if _comparable(before, key) != _comparable(after, key)
+    )
+
+
+def _comparable(draft: SetupDraft, key: str) -> object:
+    """Return a setting in a form that compares equal when only the order of the folders differs."""
+    value = getattr(draft, key)
+    return frozenset(value) if isinstance(value, list) else value
 
 
 @dataclass(frozen=True)
@@ -71,9 +103,6 @@ class SetupServices:
     """The outside systems that the setup talks to. Tests replace them."""
 
     check_ollama: Callable[[str, str], OllamaStatus] = check_ollama
-    daemon_supported: Callable[[], bool] = is_supported
-    daemon_installed: Callable[[], bool] = _service_installed
-    install_daemon: Callable[[int], str] = install_service
 
 
 @dataclass
@@ -86,3 +115,9 @@ class SetupContext:
     services: SetupServices = field(default_factory=SetupServices)
     # Folders from the --directory option. They are added after the user decides about the configured folders.
     given_directories: list[Path] = field(default_factory=list)
+    # The settings when the setup started, to tell which answers change the index.
+    starting: SetupDraft | None = None
+
+    def index_changes(self) -> tuple[str, ...]:
+        """Name the answers so far that need a run of ostra index."""
+        return index_changes(self.starting or self.draft, self.draft)

@@ -7,11 +7,11 @@ from conftest import make_fake_model
 
 from ostra.cli import commands, main
 from ostra.cli.init.prompter import SetupCancelled
+from ostra.cli.init.wizard import SetupResult
 from ostra.cli.parser import build_parser
 from ostra.cli.search_output import MAX_SHORT_TEXT_CHARACTERS
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
-from ostra.repositories.config_repository import load_config
 from ostra.services import index_session
 
 
@@ -285,7 +285,9 @@ def test_main__init__runs_setup_without_opening_the_index(monkeypatch: pytest.Mo
     monkeypatch.setattr(main, "load_config", fail_if_called)
     monkeypatch.setattr(commands, "default_config_path", lambda: tmp_path / "config.json")
     monkeypatch.setattr(
-        commands, "run_setup", lambda prompter, path, directories: setup_calls.append(path) or AppConfig()
+        commands,
+        "run_setup",
+        lambda prompter, path, directories: setup_calls.append(path) or SetupResult(AppConfig(), ()),
     )
 
     main.main(["init", "--defaults"])
@@ -301,16 +303,20 @@ def test_main__init_without_terminal__exits_with_hint(monkeypatch: pytest.Monkey
         main.main(["init"])
 
 
-def test_main__init_defaults__writes_config_and_does_not_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """Write the config file with the given folder and index nothing."""
+def test_main__init_defaults__writes_config_and_does_not_index(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Write the config file with the given folder, index nothing and remind the user to run ostra index."""
     config_path = tmp_path / "config.json"
     notes = tmp_path / "notes"
+    notes.mkdir()
     monkeypatch.setattr(commands, "default_config_path", lambda: config_path)
     monkeypatch.setattr(commands, "open_index", lambda *args, **kwargs: pytest.fail("must not index"))
 
     main.main(["init", "--defaults", "--directory", str(notes)])
 
     assert json.loads(config_path.read_text())["directories"] == [str(notes)]
+    assert "Run ostra index to apply the changes (folders)." in capsys.readouterr().out
 
 
 class AnswerPrompter:
@@ -320,26 +326,37 @@ class AnswerPrompter:
 
     def __init__(self, answer: bool | None):
         self._answer = answer
+        self.questions: list[str] = []
 
     def confirm(self, message: str, default: bool = True) -> bool:
+        self.questions.append(message)
         if self._answer is None:
             raise SetupCancelled
         return self._answer
 
 
-def _run_init_with_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: bool | None) -> Path:
-    """Run ostra init with a setup that saves one folder, and answer the index question."""
+def _run_init_with_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: bool | None, changes: tuple[str, ...] = ("folders",)
+) -> AnswerPrompter:
+    """Run ostra init with a setup that saves one folder and reports the changes, and answer the index question."""
     config_path = tmp_path / "config.json"
     notes = tmp_path / "notes"
     notes.mkdir()
     (notes / "a.txt").write_text("alpha beta\n")
     config_path.write_text(json.dumps({"directories": [str(notes)], "database_path": str(tmp_path / "file.db")}))
     monkeypatch.setattr(commands.sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr(commands, "QuestionaryPrompter", lambda: AnswerPrompter(answer))
+    prompter = AnswerPrompter(answer)
+    monkeypatch.setattr(commands, "QuestionaryPrompter", lambda: prompter)
     monkeypatch.setattr(commands, "default_config_path", lambda: config_path)
-    monkeypatch.setattr(commands, "run_setup", lambda prompter, path, directories: load_config(path))
+    monkeypatch.setattr(
+        commands,
+        "run_setup",
+        lambda prompter, path, directories: SetupResult(
+            AppConfig.from_file_values(json.loads(path.read_text())), changes
+        ),
+    )
     main.main(["init"])
-    return notes
+    return prompter
 
 
 def test_main__init_ctrl_c_at_index_question__returns_quietly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -385,3 +402,51 @@ def test_main__init_defaults_invalid_config__exits_with_error(monkeypatch: pytes
 
     assert raised.value.code == 1
     assert config_path.read_text() == "not json"
+
+
+def test_main__init_nothing_changed__asks_no_index_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Ask nothing and index nothing when no change needs indexing."""
+    prompter = _run_init_with_folder(monkeypatch, tmp_path, answer=True, changes=())
+
+    assert prompter.questions == []
+    assert not (tmp_path / "file.db").exists()
+
+
+def test_main__init_index_declined__prints_reminder(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Remind the user to run ostra index, and warn that the new model finds nothing until then."""
+    _run_init_with_folder(monkeypatch, tmp_path, answer=False, changes=("model", "chunk size"))
+
+    output = capsys.readouterr().out
+    assert "Run ostra index to apply the changes (model, chunk size)." in output
+    assert "Searches with the new model find nothing until then." in output
+    assert not (tmp_path / "file.db").exists()
+
+
+def test_main__init_invalid_environment_value__prints_message(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Print a short message instead of a traceback when an OSTRA_ variable is not valid."""
+    monkeypatch.setenv("OSTRA_CHUNK_SIZE_TOKENS", "abc")
+
+    _run_init_with_folder(monkeypatch, tmp_path, answer=True)
+
+    output = capsys.readouterr().out
+    assert "Indexing stopped:" in output
+    assert "Fix the problem, then run ostra index." in output
+
+
+def test_main__init_missing_directory__exits_with_status_2_and_saves_nothing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Stop before any question when a --directory path is not a folder."""
+    config_path = tmp_path / "config.json"
+    monkeypatch.setattr(commands, "default_config_path", lambda: config_path)
+
+    with pytest.raises(SystemExit) as raised:
+        main.main(["init", "--defaults", "--directory", str(tmp_path / "typo")])
+
+    assert raised.value.code == 2
+    assert "typo" in capsys.readouterr().err
+    assert not config_path.exists()
