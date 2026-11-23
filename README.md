@@ -158,13 +158,25 @@ For the Ollama models, the server address comes from the `OLLAMA_BASE_URL` envir
 | `ostra index` | Embed and store the new or changed chunks of the configured folders |
 | `ostra index --directory PATH` | Index one or more folders instead of the configured ones. Repeat the option for more folders. |
 | `ostra index --reindex` | Embed every chunk again, even those already stored |
-| `ostra search "query" --limit 5` | Print the chunks closest to the query, with a similarity percentage and a short preview |
+| `ostra search "query"` | In a terminal, list the matching files and open the one you pick. See [Opening results](#opening-results) |
+| `ostra search "query" --limit 5` | Show at most 5 files in the list, or print 5 chunks when the output is not a terminal |
+| `ostra search "query" --no-interactive` | Print the chunks closest to the query, with a similarity percentage and a short preview, instead of the list |
 | `ostra search "query" --max-distance 0.4` | Hide chunks whose cosine distance is above 0.4 (0 is the same direction, 2 is opposite) |
 | `ostra search "query" --full` | Print the whole text of each chunk |
 | `ostra search "query" --json` | Print the chunks as a JSON list with the full text |
 | `ostra index --database PATH` / `ostra search "query" --database PATH` | Use another SQLite database file for one run instead of `database_path` from the config |
 
 Run `ostra --help` or `ostra index --help` for the full list of options.
+
+### Opening results
+
+When you run `ostra search` in a terminal, it lists each matching file once, nearest first, with its similarity and its number of matching chunks. The nearest chunk of the highlighted file shows below the list.
+
+- Press Enter to open the file in its default application. The list stays open, so you can open more files. Pick Quit or press Ctrl-C to stop.
+- When no application opens the file, ostra shows it in its folder in the file manager. When the file was deleted after indexing, ostra opens its folder.
+- On a server without a desktop, where `xdg-open` is missing, ostra prints the path instead.
+
+Files open with `click.launch`: `open` on macOS, the Windows shell on Windows and `xdg-open` on Linux. The output of `--json` and `--full`, and any output to a pipe or file, stays the plain chunk list. `--interactive` and `--no-interactive` choose the mode yourself.
 
 Makefile shortcuts:
 
@@ -189,7 +201,7 @@ systemctl --user daemon-reload
 
 ```
 src/ostra/
-├── cli/                   command line: parser, command handlers, search output, progress bar
+├── cli/                   command line: parser, command handlers, search output and file picker, progress bar
 │   └── init/              ostra init: the setup steps, and the Prompter with its questionary implementation
 ├── services/
 │   ├── ingestion/         pipeline, runner, text chunker, source factory, run_indexing
@@ -227,7 +239,7 @@ make check            # lint, format check, type check and tests
 | `make check` | Run all of the checks above |
 | `make evals v2-potion-multilingual` | Run the retrieval evals of a run folder, here `evals/runs/v2-potion-multilingual`. `v1-baseline` needs Ollama |
 
-The suite runs 283 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra init` tests answer the questions with a scripted prompter.
+The suite runs 306 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra init` tests answer the questions with a scripted prompter.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
 

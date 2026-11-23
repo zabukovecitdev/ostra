@@ -30,12 +30,12 @@ def print_search_results(matches: list[ChunkMatch], options: SearchOutputOptions
         return
 
     for match in matches:
-        print(f"match {round(_similarity(match.distance) * 100)}%  file={match.document_id}")
-        print(_shorten_text(match.text, options.full_text))
+        print(f"match {round(similarity(match.distance) * 100)}%  file={match.document_id}")
+        print(shorten_text(match.text, options.full_text))
         print()
 
 
-def _similarity(distance: float) -> float:
+def similarity(distance: float) -> float:
     """Convert a cosine distance to a similarity.
 
     Args:
@@ -47,7 +47,7 @@ def _similarity(distance: float) -> float:
     return 1 - distance
 
 
-def _shorten_text(text: str, full_text: bool) -> str:
+def shorten_text(text: str, full_text: bool) -> str:
     """Cut a chunk text to a short preview, unless the full text is requested.
 
     Args:
@@ -78,6 +78,6 @@ def _match_to_dict(match: ChunkMatch) -> dict:
         "title": match.title,
         "file_path": match.document_id,
         "distance": match.distance,
-        "similarity": round(_similarity(match.distance), 4),
+        "similarity": round(similarity(match.distance), 4),
         "text": match.text,
     }
