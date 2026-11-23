@@ -373,7 +373,8 @@ def test_run_setup__lowercase_environment_variable__warns(
 
     run_setup(DefaultsPrompter(), tmp_path / "config.json", make_services()[0])
 
-    assert "ostra_recursive" in capsys.readouterr().out
+    # Windows stores environment variable names in upper case, so the warning names OSTRA_RECURSIVE there.
+    assert "ostra_recursive" in capsys.readouterr().out.lower()
 
 
 def test_run_setup__address_from_environment_kept__saves_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
