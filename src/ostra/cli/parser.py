@@ -97,7 +97,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit",
         type=int,
         default=DEFAULT_SEARCH_LIMIT,
-        help=f"Number of chunks to print. Default is {DEFAULT_SEARCH_LIMIT}.",
+        help=f"Number of chunks to print, or of files to list in the interactive mode. Default is "
+        f"{DEFAULT_SEARCH_LIMIT}.",
+    )
+    search.add_argument(
+        "--interactive",
+        action=argparse.BooleanOptionalAction,
+        help="List the matching files and open the one you pick, or print the chunks. By default the list is shown "
+        "when the command runs in a terminal without --json or --full.",
     )
     search.add_argument(
         "--max-distance",

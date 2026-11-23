@@ -4,12 +4,14 @@ from pathlib import Path
 
 import pytest
 from conftest import make_fake_model
+from test_search_picker import PickingPrompter
 
 from ostra.cli import commands, main
 from ostra.cli.init.prompter import SetupCancelled
 from ostra.cli.init.wizard import SetupResult
 from ostra.cli.parser import build_parser
 from ostra.cli.search_output import MAX_SHORT_TEXT_CHARACTERS
+from ostra.cli.search_picker import QUIT
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.services import index_session
@@ -233,6 +235,56 @@ def test_main__search_json_flag__prints_list_with_full_text(
     assert chunks[0]["file_path"] == str(file_path)
     assert chunks[0]["similarity"] == pytest.approx(1.0)
     assert len(chunks[0]["text"]) > MAX_SHORT_TEXT_CHARACTERS
+
+
+def _pick_quit(monkeypatch: pytest.MonkeyPatch) -> PickingPrompter:
+    """Answer the file list of the search with Quit, and return the prompter to inspect its questions."""
+    prompter = PickingPrompter([QUIT])
+    monkeypatch.setattr(commands, "QuestionaryPrompter", lambda: prompter)
+    return prompter
+
+
+def test_main__search_interactive_flag__lists_files_to_open(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """List each matching file once, instead of printing the chunks, when --interactive is given."""
+    file_path = _index_text(monkeypatch, tmp_path, " ".join(["word"] * 600))
+    capsys.readouterr()
+    prompter = _pick_quit(monkeypatch)
+
+    main.main(["search", "word", "--interactive"])
+
+    assert [choice.value for choice in prompter.choices[0]] == [str(file_path), QUIT]
+    assert capsys.readouterr().out == ""
+
+
+def test_main__search_in_terminal__lists_files_to_open(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """List the files without a flag when a person runs the search in a terminal."""
+    _index_text(monkeypatch, tmp_path, "alpha beta\n")
+    prompter = _pick_quit(monkeypatch)
+    monkeypatch.setattr(commands, "_is_terminal", lambda: True)
+
+    main.main(["search", "alpha"])
+
+    assert len(prompter.choices) == 1
+
+
+@pytest.mark.parametrize("flags", [["--full"], ["--json"], ["--no-interactive"], ["--interactive", "--json"]])
+def test_main__search_in_terminal_with_print_flag__prints_chunks(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path, flags: list[str]
+):
+    """Print the chunks in a terminal when --full, --json or --no-interactive asks for them."""
+    _index_text(monkeypatch, tmp_path, "alpha beta\n")
+    capsys.readouterr()
+    prompter = _pick_quit(monkeypatch)
+    monkeypatch.setattr(commands, "_is_terminal", lambda: True)
+
+    main.main(["search", "alpha", *flags])
+
+    assert prompter.choices == []
+    assert "alpha beta" in capsys.readouterr().out
 
 
 def test_main__search_max_distance_option__parses_float():

@@ -11,6 +11,7 @@ from ostra.cli.init.questionary_prompter import QuestionaryPrompter
 from ostra.cli.init.wizard import SetupResult, run_setup
 from ostra.cli.progress import ProgressReporter
 from ostra.cli.search_output import SearchOutputOptions, print_search_results
+from ostra.cli.search_picker import pick_and_open
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.providers.sources.document_source import DocumentSource
@@ -150,5 +151,30 @@ def run_search(arguments: argparse.Namespace, config: AppConfig, session: IndexS
         session: The open embedding model and its index.
     """
     service = ChunkSearchService(embedding_provider=session.embedding_model.provider, model_index=session.model_index)
+    if _should_pick(arguments):
+        files = service.search_files(query=arguments.query, limit=arguments.limit, max_distance=arguments.max_distance)
+        pick_and_open(files, QuestionaryPrompter())
+        return
+
     matches = service.search(query=arguments.query, limit=arguments.limit, max_distance=arguments.max_distance)
     print_search_results(matches, SearchOutputOptions(full_text=arguments.full, as_json=arguments.json))
+
+
+def _should_pick(arguments: argparse.Namespace) -> bool:
+    """Decide whether the search lists the files to open, or prints the chunks.
+
+    --json always prints. --interactive and --no-interactive decide when given. Otherwise the list is shown when a
+    person can answer it in a terminal and --full does not ask for the chunk texts.
+    """
+    if arguments.json:
+        return False
+
+    if arguments.interactive is not None:
+        return bool(arguments.interactive)
+
+    return not arguments.full and _is_terminal()
+
+
+def _is_terminal() -> bool:
+    """Check that a person can answer questions: both the input and the output are a terminal."""
+    return sys.stdin.isatty() and sys.stdout.isatty()

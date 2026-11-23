@@ -19,6 +19,7 @@ classifiers = [
     "Topic :: Text Processing :: Indexing",
 ]
 dependencies = [
+    "click>=8.5.0",
     "fastembed>=0.9.1",
     "ollama>=0.6.3",
     "platformdirs>=4.14.0",
