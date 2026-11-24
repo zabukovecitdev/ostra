@@ -3,9 +3,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ostra.cli.init.draft import MODEL_CHANGE, SetupContext, SetupDraft, SetupServices
-from ostra.cli.init.prompter import Prompter, SetupCancelled
-from ostra.cli.init.steps import SETUP_STEPS, SetupStep
+from ostra.cli.config.draft import MODEL_CHANGE, SetupContext, SetupDraft, SetupServices
+from ostra.cli.config.prompter import Prompter, SetupCancelled
+from ostra.cli.config.steps import SETUP_STEPS, SetupStep
 from ostra.models.app_config import AppConfig
 from ostra.repositories.config_repository import read_config_file, save_config
 
@@ -102,7 +102,7 @@ def _replace_invalid_config(prompter: Prompter, error: ValueError) -> AppConfig:
     """
     print(f"The config file could not be read.\n{error}\n")
     if not prompter.interactive:
-        print("Fix or remove the file, then run ostra init again.")
+        print("Fix or remove the file, then run ostra config again.")
         raise SetupCancelled
 
     if not prompter.confirm("Start from the defaults and replace the file when you save?", default=False):

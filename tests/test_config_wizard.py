@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from ostra.cli.init.draft import SetupServices
-from ostra.cli.init.prompter import Choice, DefaultsPrompter, Prompter, Validator
-from ostra.cli.init.steps import CHANGE_ADDRESS, CONTINUE, RETRY
-from ostra.cli.init.wizard import run_setup
+from ostra.cli.config.draft import SetupServices
+from ostra.cli.config.prompter import Choice, DefaultsPrompter, Prompter, Validator
+from ostra.cli.config.steps import CHANGE_ADDRESS, CONTINUE, RETRY
+from ostra.cli.config.wizard import run_setup
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS
 from ostra.services.setup.ollama_check import OllamaStatus
 

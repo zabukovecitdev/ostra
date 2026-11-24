@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ostra.cli.init.prompter import Choice, Prompter, SetupCancelled, Validator
+from ostra.cli.config.prompter import Choice, Prompter, SetupCancelled, Validator
 from ostra.cli.search_output import MAX_SHORT_TEXT_CHARACTERS
 from ostra.cli.search_picker import PICK_MESSAGE, QUIT, display_path, pick_and_open
 from ostra.models.file_match import FileMatch

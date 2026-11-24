@@ -2,8 +2,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from urllib.parse import urlparse
 
-from ostra.cli.init.draft import SetupContext, SetupDraft
-from ostra.cli.init.prompter import Choice, SetupCancelled
+from ostra.cli.config.draft import SetupContext, SetupDraft
+from ostra.cli.config.prompter import Choice, SetupCancelled
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS, get_model_spec
@@ -62,7 +62,7 @@ def choose_folders(context: SetupContext) -> None:
     _add_unique(draft.directories, context.given_directories)
     _add_folders(context)
     if not draft.directories:
-        print("No folders yet. Run ostra init again or pass folders to ostra index.")
+        print("No folders yet. Run ostra config again or pass folders to ostra index.")
 
     draft.recursive = prompter.confirm("Index the files in subfolders too?", default=draft.recursive)
 

@@ -2,7 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from ostra.cli.init.prompter import Prompter
+from ostra.cli.config.prompter import Prompter
 from ostra.models.app_config import AppConfig
 from ostra.services.setup.ollama_check import OllamaStatus, check_ollama
 

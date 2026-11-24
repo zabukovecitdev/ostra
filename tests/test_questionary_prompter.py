@@ -4,8 +4,8 @@ import pytest
 from prompt_toolkit.input import PipeInput, create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
-from ostra.cli.init.prompter import Choice, SetupCancelled
-from ostra.cli.init.questionary_prompter import QuestionaryPrompter
+from ostra.cli.config.prompter import Choice, SetupCancelled
+from ostra.cli.config.questionary_prompter import QuestionaryPrompter
 
 DOWN = "\x1b[B"
 ENTER = "\r"

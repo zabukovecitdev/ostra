@@ -6,9 +6,9 @@ from pathlib import Path
 import httpx
 from ollama import ResponseError
 
-from ostra.cli.init.prompter import DefaultsPrompter, Prompter, SetupCancelled
-from ostra.cli.init.questionary_prompter import QuestionaryPrompter
-from ostra.cli.init.wizard import SetupResult, run_setup
+from ostra.cli.config.prompter import DefaultsPrompter, Prompter, SetupCancelled
+from ostra.cli.config.questionary_prompter import QuestionaryPrompter
+from ostra.cli.config.wizard import SetupResult, run_setup
 from ostra.cli.progress import ProgressReporter
 from ostra.cli.search_output import SearchOutputOptions, print_search_results
 from ostra.cli.search_picker import pick_and_open
@@ -41,18 +41,18 @@ def run_index(arguments: argparse.Namespace, config: AppConfig, session: IndexSe
     _index_with_progress(config, session, sources, reindex=arguments.reindex)
 
 
-def run_init(arguments: argparse.Namespace) -> None:
+def run_config(arguments: argparse.Namespace) -> None:
     """Ask the setup questions, save the settings and index the folders when a change needs it.
 
     Args:
-        arguments: The parsed init arguments.
+        arguments: The parsed config arguments.
 
     Raises:
         SystemExit: When the questions cannot be asked, because the input is not a terminal; with status 2 when a
             --directory path is not a folder; with status 1 when --defaults cannot save the settings.
     """
     if not (arguments.defaults or sys.stdin.isatty()):
-        raise SystemExit("ostra init needs a terminal. Use ostra init --defaults, or edit the config file.")
+        raise SystemExit("ostra config needs a terminal. Use ostra config --defaults, or edit the config file.")
 
     given = arguments.directory or []
     _require_folders(given)
@@ -80,7 +80,7 @@ def _require_folders(folders: list[Path]) -> None:
     """
     missing = [str(folder) for folder in folders if not folder.expanduser().is_dir()]
     if missing:
-        print(f"ostra init: not an existing folder: {', '.join(missing)}", file=sys.stderr)
+        print(f"ostra config: not an existing folder: {', '.join(missing)}", file=sys.stderr)
         raise SystemExit(2)
 
 

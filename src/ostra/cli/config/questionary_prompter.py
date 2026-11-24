@@ -5,7 +5,7 @@ import questionary
 from prompt_toolkit.input import Input
 from prompt_toolkit.output import Output
 
-from ostra.cli.init.prompter import Choice, Prompter, SetupCancelled, Validator
+from ostra.cli.config.prompter import Choice, Prompter, SetupCancelled, Validator
 
 
 class QuestionaryPrompter(Prompter):

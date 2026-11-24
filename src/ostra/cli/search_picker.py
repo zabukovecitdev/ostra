@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from ostra.cli.init.prompter import Choice, Prompter, SetupCancelled
+from ostra.cli.config.prompter import Choice, Prompter, SetupCancelled
 from ostra.cli.result_opener import open_result
 from ostra.cli.search_output import shorten_text, similarity
 from ostra.models.file_match import FileMatch

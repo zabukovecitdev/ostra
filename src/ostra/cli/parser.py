@@ -1,14 +1,14 @@
 import argparse
 from pathlib import Path
 
-from ostra.cli.commands import run_index, run_init, run_search
+from ostra.cli.commands import run_config, run_index, run_search
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS
 
 DEFAULT_SEARCH_LIMIT = 5
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the command line parser with the init, index and search commands.
+    """Build the command line parser with the config, index and search commands.
 
     Returns:
         The parser. Each command has its own options, and the database option works with both commands.
@@ -33,18 +33,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     commands = parser.add_subparsers(dest="command", metavar="COMMAND")
 
-    init = commands.add_parser(
-        "init",
-        help="Set up the model, the connection and the folders step by step.",
-        description="Set up the embedding model, the Ollama connection, the folders and the indexing settings.",
+    config = commands.add_parser(
+        "config",
+        aliases=["init"],
+        help="Set up ostra, or change its settings.",
+        description="Walk through the setup the first time, and change single settings later.",
     )
-    init.set_defaults(handler=run_init, needs_index=False)
-    init.add_argument(
+    config.set_defaults(handler=run_config, needs_index=False)
+    config.add_argument(
         "--defaults",
         action="store_true",
         help="Ask no questions. Keep the current settings, or save the defaults when there is no config file.",
     )
-    init.add_argument(
+    config.add_argument(
         "--directory",
         action="append",
         type=Path,
