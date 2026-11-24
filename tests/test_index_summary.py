@@ -67,3 +67,14 @@ def test_indexed_document_counts__database_without_model_indexes__returns_empty(
     tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     connection.close()
     assert tables == {"file_chunks"}
+
+
+def test_indexed_document_counts__folder_with_space_and_hash__counts_documents(tmp_path: Path):
+    """Count the documents of a database whose folder name has a space and a #, which a plain URI would cut short."""
+    database_path = tmp_path / "my notes #1" / "ostra.db"
+    database_path.parent.mkdir()
+    with SqliteChunkStore.open(database_path) as store:
+        save_document(store.model_index(make_spec("small", 4), create=True), "small", "/notes/a.txt", ["a1", "a2"])
+        save_document(store.model_index(make_spec("small", 4), create=True), "small", "/notes/b.txt", ["b1"])
+
+    assert indexed_document_counts(database_path)["small"] == 2

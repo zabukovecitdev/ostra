@@ -130,7 +130,7 @@ The save step shows one summary of the changes. A change of the model, the folde
 
 Without such a change, the choices are Save and Back to the menu. Press Ctrl-C at any time to stop without saving.
 
-A model change is safe. With Save and index now, ostra embeds the files with the new model first, and searches keep using the old model until indexing finishes. Ctrl-C or an error saves nothing. The chunks embedded so far stay in the database, so running `ostra config` again continues where it stopped. If a custom chunk size does not fit the new model, ostra offers to reset it to the model default.
+A model change is safe. With Save and index now, ostra embeds the files with the new model first, and searches keep using the old model until indexing finishes. Ctrl-C or an error saves nothing. The chunks embedded so far stay in the database and are not embedded again, so running `ostra config` again and choosing the same model finishes faster. Ctrl-C during indexing of a change that is not a model keeps the saved settings, and `ostra index` continues. If a custom chunk size does not fit the new model, ostra offers to reset it to the model default.
 
 Shortcuts: `ostra config model`, `ostra config folders`, `ostra config chunks` and `ostra config database` jump straight to one setting, then to the save step. `ostra config --defaults --directory ~/notes` saves the settings without questions and never indexes, which suits scripts.
 
@@ -251,7 +251,7 @@ make check            # lint, format check, type check and tests
 | `make check` | Run all of the checks above |
 | `make evals v2-potion-multilingual` | Run the retrieval evals of a run folder, here `evals/runs/v2-potion-multilingual`. `v1-baseline` needs Ollama |
 
-The suite runs 349 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra config` tests answer the questions with a scripted prompter.
+The suite runs 361 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra config` tests answer the questions with a scripted prompter.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
 

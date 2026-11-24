@@ -22,8 +22,12 @@ class SetupResult:
     index_changes: tuple[str, ...]
     # The embedding model before the setup, which searches keep using until the settings are saved.
     previous_model: str
-    # True when the user chose to index right after saving. A model change is saved only after indexing.
-    index_now: bool = False
+    # True when the user chose to index right after the save step. A model change is then saved by the caller
+    # only after indexing succeeds. Other changes are saved first.
+    index_now: bool
+    # False on the first setup, or when the config file could not be read and the user replaced it. Nothing
+    # was saved before, so no settings are in use yet.
+    had_config_file: bool
 
     @property
     def model_changed(self) -> bool:
@@ -76,7 +80,13 @@ def _ask(
     _print_intro(config_path, walkthrough, found=existing is not None)
     draft = SetupDraft.from_config(existing if existing is not None else AppConfig.from_file_values({}))
     context = SetupContext(
-        prompter, draft, config_path, services or SetupServices(), list(directories), starting=draft.copy()
+        prompter,
+        draft,
+        config_path,
+        services or SetupServices(),
+        list(directories),
+        starting=draft.copy(),
+        had_config_file=existing is not None,
     )
     _run_flow(context, walkthrough, shortcut)
     return context
@@ -117,6 +127,7 @@ def _save(context: SetupContext) -> SetupResult:
         index_changes=context.index_changes(),
         previous_model=previous_model,
         index_now=context.index_now,
+        had_config_file=context.had_config_file,
     )
     if result.index_now and result.model_changed:
         return result

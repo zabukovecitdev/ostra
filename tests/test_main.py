@@ -340,7 +340,8 @@ def test_main__config__runs_setup_without_opening_the_index(monkeypatch: pytest.
         commands,
         "run_setup",
         lambda prompter, path, **kwargs: (
-            setup_calls.append(path) or SetupResult(AppConfig(), (), "potion-multilingual-128m")
+            setup_calls.append(path)
+            or SetupResult(AppConfig(), (), "potion-multilingual-128m", index_now=False, had_config_file=False)
         ),
     )
 
@@ -418,6 +419,9 @@ def _add_folder_answers(tmp_path: Path, save_choice: str) -> list[object]:
     return ["folders", KEEP, str(more), "", KEEP, "save", save_choice]
 
 
+KEPT_CHUNKS = "Chunks embedded so far are kept; run ostra config again to save the settings and continue."
+
+
 def _saved_model(tmp_path: Path) -> str:
     """Return the embedding model that the config file holds."""
     return json.loads((tmp_path / "config.json").read_text())["embedding_model"]
@@ -487,7 +491,7 @@ def test_main__config_model_change_index_fails__keeps_old_model(
     output = capsys.readouterr().out
     assert _saved_model(tmp_path) == "bge-m3"
     assert "Indexing stopped: Failed to connect to Ollama." in output
-    assert "The settings were not saved, so ostra still uses bge-m3." in output
+    assert f"The settings were not saved, so ostra still uses bge-m3. {KEPT_CHUNKS}" in output
 
 
 def test_main__config_model_change_ctrl_c_while_indexing__keeps_old_model(
@@ -506,6 +510,85 @@ def test_main__config_model_change_ctrl_c_while_indexing__keeps_old_model(
     assert _saved_model(tmp_path) == "bge-m3"
     assert "Indexing stopped.\n" in output
     assert "The settings were not saved, so ostra still uses bge-m3." in output
+
+
+def test_main__config_model_change_index_now_uses_environment_database(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Index a model change into the database of OSTRA_DATABASE_PATH, and save the file's database path."""
+    monkeypatch.setenv("OSTRA_DATABASE_PATH", str(tmp_path / "env.db"))
+
+    _run_config(monkeypatch, tmp_path, ["model", "potion-multilingual-128m", "save", "index_now"])
+
+    assert (tmp_path / "env.db").is_file()
+    assert not (tmp_path / "file.db").exists()
+    assert json.loads((tmp_path / "config.json").read_text())["database_path"] == str(tmp_path / "file.db")
+
+
+def test_main__config_without_model_change_ctrl_c_while_indexing__says_settings_are_saved(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Keep the saved settings and print how to continue when Ctrl-C stops indexing a change that is not a model."""
+
+    def interrupt(**kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(commands, "run_indexing", interrupt)
+
+    _run_config(monkeypatch, tmp_path, _add_folder_answers(tmp_path, "index_now"))
+
+    assert "Indexing stopped. The settings are saved; run ostra index to continue.\n" in capsys.readouterr().out
+    assert json.loads((tmp_path / "config.json").read_text())["directories"][-1] == str(tmp_path / "more")
+
+
+def _first_run_result(tmp_path: Path, index_now: bool = True) -> SetupResult:
+    """Return the answers of a first setup that changes the model and chooses to index now."""
+    notes = tmp_path / "notes"
+    notes.mkdir(exist_ok=True)
+    config = AppConfig.from_file_values({"directories": [notes], "embedding_model": "bge-m3"})
+    return SetupResult(
+        config=config,
+        index_changes=("model",),
+        previous_model="potion-multilingual-128m",
+        index_now=index_now,
+        had_config_file=False,
+    )
+
+
+def test_index_then_save__first_run_index_fails__says_nothing_was_saved_and_no_model_used(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Do not name a previous model on a first run, because no config file existed before."""
+
+    def refuse(**kwargs):
+        raise ConnectionError("Failed to connect to Ollama.")
+
+    monkeypatch.setattr(commands, "run_indexing", refuse)
+    config_path = tmp_path / "config.json"
+
+    commands._index_then_save(_first_run_result(tmp_path), config_path)
+
+    output = capsys.readouterr().out
+    assert "Indexing stopped: Failed to connect to Ollama." in output
+    assert f"The settings were not saved. {KEPT_CHUNKS}" in output
+    assert output.count("Indexing stopped") == 1
+    assert "still uses" not in output
+    assert not config_path.exists()
+
+
+def test_index_then_save__first_run_ctrl_c_while_indexing__prints_one_stop_message(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Print the first-run message alone when the user presses Ctrl-C, without a second stop line."""
+
+    def interrupt(**kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(commands, "run_indexing", interrupt)
+    config_path = tmp_path / "config.json"
+
+    commands._index_then_save(_first_run_result(tmp_path), config_path)
+
+    assert capsys.readouterr().out == f"Indexing stopped.\nThe settings were not saved. {KEPT_CHUNKS}\n"
+    assert not config_path.exists()
 
 
 def test_main__config_defaults_invalid_config__exits_with_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

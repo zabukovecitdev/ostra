@@ -14,6 +14,7 @@ from ostra.repositories.config_repository import (
     load_config,
     read_config_file,
     save_config,
+    with_environment,
 )
 
 
@@ -325,3 +326,22 @@ def test_read_config_file__invalid_value__raises_value_error(tmp_path: Path):
 
     with pytest.raises(ValueError, match="invalid settings"):
         read_config_file(config_path)
+
+
+def test_with_environment__environment_variable_set__overrides_given_settings(monkeypatch: pytest.MonkeyPatch):
+    """Apply an OSTRA_ variable over the given settings, as load_config does for the file values."""
+    monkeypatch.setenv("OSTRA_DATABASE_PATH", "/data/env.db")
+    config = AppConfig.from_file_values({"database_path": "/data/file.db", "chunk_size_tokens": 300})
+
+    applied = with_environment(config)
+
+    assert applied.database_path == Path("/data/env.db")
+    assert applied.chunk_size_tokens == 300
+
+
+def test_with_environment__no_environment_variable__keeps_given_settings(monkeypatch: pytest.MonkeyPatch):
+    """Return the given settings unchanged when no OSTRA_ variable is set."""
+    monkeypatch.delenv("OSTRA_DATABASE_PATH", raising=False)
+    config = AppConfig.from_file_values({"database_path": "/data/file.db"})
+
+    assert with_environment(config).model_dump() == config.model_dump()

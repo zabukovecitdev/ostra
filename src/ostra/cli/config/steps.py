@@ -57,10 +57,21 @@ class ModelStatus:
 def choose_model(context: SetupContext) -> None:
     """Ask which embedding model to use. Each choice tells whether it is current, indexed and on the Ollama server."""
     draft = context.draft
+    draft.embedding_model = context.prompter.select(
+        "Which embedding model should ostra use?", _model_choices(context), default=draft.embedding_model
+    )
+
+
+def _model_choices(context: SetupContext) -> list[Choice]:
+    """Describe each model. Without a person to answer, the descriptions are plain, and no outside system is asked."""
+    if not context.prompter.interactive:
+        return [Choice(spec.model_id, spec.model_id, _where_and_notes(spec)) for spec in EMBEDDING_MODELS.values()]
+
+    draft = context.draft
     indexed = context.services.indexed_files(draft.database_path)
     ollama_models = _ollama_models(context)
     starting_model = (context.starting or draft).embedding_model
-    choices = [
+    return [
         Choice(
             spec.model_id,
             spec.model_id,
@@ -68,9 +79,6 @@ def choose_model(context: SetupContext) -> None:
         )
         for spec in EMBEDDING_MODELS.values()
     ]
-    draft.embedding_model = context.prompter.select(
-        "Which embedding model should ostra use?", choices, default=draft.embedding_model
-    )
 
 
 def configure_connection(context: SetupContext) -> None:
@@ -106,11 +114,13 @@ def choose_indexing_settings(context: SetupContext) -> None:
     draft, prompter = context.draft, context.prompter
     spec = _model(draft)
     uses_defaults = draft.chunk_size_tokens is None and draft.chunk_overlap_tokens == DEFAULT_CHUNK_OVERLAP_TOKENS
+    # A chunk size that does not fit the model makes the defaults the suggested answer.
+    too_large = _warn_chunk_too_large(draft)
     question = (
         f"Use the default chunk settings ({spec.default_chunk_size_tokens} tokens per chunk, "
         f"{DEFAULT_CHUNK_OVERLAP_TOKENS} tokens of overlap)?"
     )
-    if prompter.confirm(question, default=uses_defaults):
+    if prompter.confirm(question, default=uses_defaults or too_large):
         draft.chunk_size_tokens = None
         draft.chunk_overlap_tokens = DEFAULT_CHUNK_OVERLAP_TOKENS
         return
@@ -137,15 +147,6 @@ def choose_database(context: SetupContext) -> None:
         draft.database_path = _absolute(answer)
 
 
-WALKTHROUGH_STEPS: tuple[SetupStep, ...] = (
-    choose_model,
-    configure_connection,
-    choose_folders,
-    choose_indexing_settings,
-    choose_database,
-)
-
-
 def fit_chunk_size(context: SetupContext) -> None:
     """After a model change, offer the model default when the chunk size does not fit the new model."""
     draft, prompter = context.draft, context.prompter
@@ -154,14 +155,21 @@ def fit_chunk_size(context: SetupContext) -> None:
     if draft.chunk_size_tokens is None or draft.chunk_size_tokens <= largest:
         return
 
-    print(
-        f"The chunk size of {draft.chunk_size_tokens} tokens does not fit {spec.model_id}, which takes up to {largest}."
-    )
+    _warn_chunk_too_large(draft)
     if prompter.confirm(f"Use the model default of {spec.default_chunk_size_tokens} tokens per chunk?", default=True):
         draft.chunk_size_tokens = None
         return
 
     choose_indexing_settings(context)
+
+
+WALKTHROUGH_STEPS: tuple[SetupStep, ...] = (
+    choose_model,
+    configure_connection,
+    choose_folders,
+    choose_indexing_settings,
+    choose_database,
+)
 
 
 def add_given_folders(context: SetupContext) -> None:
@@ -213,6 +221,19 @@ def describe_chunks(draft: SetupDraft) -> str:
 def _model(draft: SetupDraft) -> EmbeddingModelSpec:
     """Return the spec of the chosen model."""
     return get_model_spec(draft.embedding_model)
+
+
+def _warn_chunk_too_large(draft: SetupDraft) -> bool:
+    """Say when the chunk size does not fit the chosen model, and return whether it does not fit."""
+    spec = _model(draft)
+    largest = _largest_chunk(spec)
+    if draft.chunk_size_tokens is None or draft.chunk_size_tokens <= largest:
+        return False
+
+    print(
+        f"The chunk size of {draft.chunk_size_tokens} tokens does not fit {spec.model_id}, which takes up to {largest}."
+    )
+    return True
 
 
 def _largest_chunk(spec: EmbeddingModelSpec) -> int:
@@ -267,14 +288,11 @@ def _ollama_state(spec: EmbeddingModelSpec, ollama_models: set[str] | None) -> s
 
 
 def _ollama_models(context: SetupContext) -> set[str] | None:
-    """List the models of the Ollama server, but only when a model of the registry runs on Ollama.
+    """List the models of the Ollama server.
 
     Returns:
-        The model names with tags, or None when the server does not answer or no model uses Ollama.
+        The model names with tags, or None when the server does not answer.
     """
-    if not any(spec.provider is EmbeddingProviderName.OLLAMA for spec in EMBEDDING_MODELS.values()):
-        return None
-
     address = context.draft.ollama_base_url or OllamaSettings().base_url
     return context.services.ollama_models(address)
 

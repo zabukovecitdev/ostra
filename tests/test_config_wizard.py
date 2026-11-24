@@ -557,3 +557,62 @@ def test_choose_model__ollama_address_in_config__lists_that_server(tmp_path: Pat
 
     assert listed == ["http://gpu-box:11434"]
     assert checked == [database_path]
+
+
+def test_run_setup__no_config_file__result_says_no_config_was_read(tmp_path: Path):
+    """Tell the caller that no config file existed, so that a failed index does not name a previous model."""
+    result = run_setup(
+        ScriptedPrompter([KEEP, "", False, True, True, "save"]), tmp_path / "config.json", make_services()[0]
+    )
+
+    assert result is not None and result.had_config_file is False
+
+
+def test_run_setup__config_file_read__result_says_config_was_read(tmp_path: Path):
+    """Tell the caller that the config file was read, so that its settings are still in use until the save."""
+    config_path = tmp_path / "config.json"
+    write_config(config_path, {"recursive": True})
+
+    result = run_setup(ScriptedPrompter([KEEP, "", KEEP, True, True, "save"]), config_path, make_services()[0])
+
+    assert result is not None and result.had_config_file is True
+
+
+def test_run_setup__invalid_config_replaced__result_says_no_config_was_read(tmp_path: Path):
+    """Count a file that could not be read as no config, because its settings were not in use."""
+    config_path = tmp_path / "config.json"
+    config_path.write_text("not json")
+    prompter = ScriptedPrompter([True, KEEP, "", False, True, True, "save"])
+
+    result = run_setup(prompter, config_path, make_services()[0])
+
+    assert result is not None and result.had_config_file is False
+
+
+def test_run_setup__walkthrough_chunk_size_too_large_for_new_model__suggests_defaults_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    """Warn about a chunk size that does not fit the model of the walkthrough, and suggest the defaults once."""
+    config_path = tmp_path / "config.json"
+    write_config(config_path, {"embedding_model": "bge-m3", "chunk_size_tokens": 600})
+    services, _ = make_services([OllamaStatus(reachable=True, model_present=True)])
+    # Model, the Ollama address, no folders, no subfolders, the suggested chunk defaults, database, save.
+    prompter = ScriptedPrompter(["mxbai-embed-large", KEEP, "", False, KEEP, True, "save"])
+
+    result = run_setup(prompter, config_path, services)
+
+    assert result is not None and result.config.chunk_size_tokens is None
+    assert "does not fit mxbai-embed-large" in capsys.readouterr().out
+    assert "Use the model default of 510 tokens per chunk?" not in prompter.questions
+    assert sum(question.startswith("Use the default chunk settings") for question in prompter.questions) == 1
+
+
+def test_choose_model__defaults_prompter__asks_no_outside_system(tmp_path: Path):
+    """Show plain model descriptions without listing the indexes or the Ollama models when no person answers."""
+    services = make_services()[0]
+    services = replace(services, indexed_files=lambda path: pytest.fail("no index lookup"))
+    services = replace(services, ollama_models=lambda url: pytest.fail("no Ollama lookup"))
+
+    result = run_setup(DefaultsPrompter(), tmp_path / "config.json", services)
+
+    assert result is not None and result.config.embedding_model == "potion-multilingual-128m"

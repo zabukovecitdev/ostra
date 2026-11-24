@@ -51,9 +51,24 @@ def load_config(config_path: Path | None = None) -> AppConfig:
 
     file_values = _read_file_values(config_path)
     try:
-        return AppConfig(**file_values)
+        return with_environment(AppConfig.from_file_values(file_values))
     except ValidationError as error:
         raise ValueError(f"Config file has invalid settings. Path={config_path}\n{error}") from error
+
+
+def with_environment(config: AppConfig) -> AppConfig:
+    """Apply the OSTRA_ environment variables over the settings, as load_config does for the file values.
+
+    Args:
+        config: The settings, for example the values of the config file without the environment.
+
+    Returns:
+        The settings where each OSTRA_ variable that is set replaces the value of the same setting.
+
+    Raises:
+        ValidationError: When an OSTRA_ variable is not a valid setting.
+    """
+    return AppConfig(**config.model_dump())
 
 
 def read_config_file(config_path: Path) -> AppConfig | None:

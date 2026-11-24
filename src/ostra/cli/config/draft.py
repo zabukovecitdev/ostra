@@ -124,6 +124,8 @@ class SetupContext:
     starting: SetupDraft | None = None
     # Set by the save step: True when the user chose to index right after saving.
     index_now: bool = False
+    # True when the config file was read, so that its settings were in use before the setup.
+    had_config_file: bool = False
 
     def index_changes(self) -> tuple[str, ...]:
         """Name the answers so far that need a run of ostra index."""

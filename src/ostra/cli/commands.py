@@ -15,7 +15,7 @@ from ostra.cli.search_picker import pick_and_open
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.providers.sources.document_source import DocumentSource
-from ostra.repositories.config_repository import default_config_path, load_config, save_config
+from ostra.repositories.config_repository import default_config_path, load_config, save_config, with_environment
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.index_session import IndexSession, open_index
 from ostra.services.ingestion.indexing_service import run_indexing
@@ -114,34 +114,36 @@ def _index_then_save(result: SetupResult, config_path: Path) -> None:
         result: The answers of the setup, with the new settings.
         config_path: The config file to write.
     """
-    if _index_new_settings(result.config):
+    failure = _index_new_settings(result.config)
+    if failure is None:
         save_config(result.config, config_path)
         print(f"Settings saved to {config_path}.")
         return
 
-    print(
-        f"The settings were not saved, so ostra still uses {result.previous_model}. "
-        "Chunks embedded so far are kept; run ostra config again to continue."
-    )
+    _print_not_saved(result, failure)
 
 
-def _index_new_settings(config: AppConfig) -> bool:
-    """Index with the settings that are not saved yet, and report a failure or Ctrl-C.
+def _print_not_saved(result: SetupResult, failure: BaseException) -> None:
+    """Say why indexing stopped, that the settings were not saved, and what the user can do next."""
+    keep = "Chunks embedded so far are kept; run ostra config again to save the settings and continue."
+    # Without a config file, ostra used no settings before, so the message names no previous model.
+    still_used = f", so ostra still uses {result.previous_model}" if result.had_config_file else ""
+    print(_stopped_text(failure))
+    print(f"The settings were not saved{still_used}. {keep}")
+
+
+def _index_new_settings(config: AppConfig) -> BaseException | None:
+    """Index with the settings that are not saved yet, with the OSTRA_ environment variables applied.
 
     Returns:
-        True when indexing finished.
+        The error or Ctrl-C that stopped the indexing, or None when indexing finished.
     """
     try:
-        error = _index_settings(config)
-    except KeyboardInterrupt:
-        print("Indexing stopped.")
-        return False
+        settings = with_environment(config)
+    except ValueError as error:
+        return error
 
-    if error is None:
-        return True
-
-    print(f"Indexing stopped: {error}")
-    return False
+    return _index_settings(settings)
 
 
 def _index_saved_settings(config_path: Path) -> None:
@@ -160,26 +162,36 @@ def _index_saved_settings(config_path: Path) -> None:
         return
 
     failure = _index_settings(config)
-    if failure is not None:
+    if isinstance(failure, KeyboardInterrupt):
+        print("Indexing stopped. The settings are saved; run ostra index to continue.")
+    elif failure is not None:
         print(_failure_message(failure))
 
 
-def _index_settings(config: AppConfig) -> Exception | None:
-    """Index the configured folders with these settings.
+def _index_settings(config: AppConfig) -> BaseException | None:
+    """Index the configured folders with these settings. Both index paths use it.
 
     Returns:
-        The error that stopped the indexing, or None when indexing finished.
+        The error or Ctrl-C that stopped the indexing, or None when indexing finished.
     """
     try:
         with open_index(config, create=True) as session:
             _index_with_progress(config, session, build_sources(config))
-    except _INDEX_ERRORS as error:
+    except (KeyboardInterrupt, *_INDEX_ERRORS) as error:
         return error
 
     return None
 
 
-def _failure_message(error: Exception) -> str:
+def _stopped_text(failure: BaseException) -> str:
+    """Name the error that stopped the indexing, or say that the user stopped it."""
+    if isinstance(failure, KeyboardInterrupt):
+        return "Indexing stopped."
+
+    return f"Indexing stopped: {failure}"
+
+
+def _failure_message(error: BaseException) -> str:
     """Say why indexing stopped and what the user can do about it."""
     if isinstance(error, (ConnectionError, httpx.HTTPError, ResponseError)):
         return f"Indexing stopped: {error}\nCheck the Ollama server, then run ostra index."
