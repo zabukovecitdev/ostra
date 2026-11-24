@@ -6,6 +6,7 @@ import pytest
 from platformdirs import user_data_path
 
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS, DEFAULT_DATABASE_PATH
+from ostra.errors.config_not_found_error import ConfigNotFoundError
 from ostra.models.app_config import AppConfig
 from ostra.repositories.config_repository import (
     DEFAULT_CONFIG_PATH,
@@ -16,35 +17,33 @@ from ostra.repositories.config_repository import (
 )
 
 
-def test_load_config__config_file_missing__returns_default_settings(tmp_path: Path):
-    """Return the default database path and no folders when the config file does not exist."""
-    config = load_config(tmp_path / "ostra" / "config.json")
-
-    assert config.database_path == DEFAULT_DATABASE_PATH
-    assert config.directories == []
-
-
-def test_load_config__config_file_missing__creates_config_file_with_defaults(tmp_path: Path):
-    """Create the config file with the default database path and an empty folder list."""
+def test_load_config__config_file_missing__raises_config_not_found_error_with_path(tmp_path: Path):
+    """Raise ConfigNotFoundError that names the path when the config file does not exist."""
     config_path = tmp_path / "ostra" / "config.json"
 
-    load_config(config_path)
+    with pytest.raises(ConfigNotFoundError) as error:
+        load_config(config_path)
 
-    assert json.loads(config_path.read_text()) == {
-        "database_path": str(DEFAULT_DATABASE_PATH),
-        "directories": [],
-        "recursive": False,
-        "chunk_overlap_tokens": 50,
-        "embedding_model": "potion-multilingual-128m",
-    }
+    assert error.value.config_path == config_path
+
+
+def test_load_config__config_file_missing__creates_no_file_or_folder(tmp_path: Path):
+    """Leave the disk unchanged when the config file does not exist."""
+    config_path = tmp_path / "ostra" / "config.json"
+
+    with pytest.raises(ConfigNotFoundError):
+        load_config(config_path)
+
+    assert not config_path.exists()
+    assert not config_path.parent.exists()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission modes do not apply on Windows")
-def test_load_config__config_file_missing__creates_owner_only_directory_and_file(tmp_path: Path):
+def test_save_config__config_file_missing__creates_owner_only_directory_and_file(tmp_path: Path):
     """Create the config directory with mode 700 and the config file with mode 600."""
     config_path = tmp_path / "ostra" / "config.json"
 
-    load_config(config_path)
+    save_config(AppConfig(database_path=tmp_path / "ostra.db"), config_path)
 
     assert config_path.parent.stat().st_mode & 0o777 == 0o700
     assert config_path.stat().st_mode & 0o777 == 0o600

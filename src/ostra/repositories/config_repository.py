@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 from pathlib import Path
 
@@ -7,14 +6,13 @@ from platformdirs import user_config_path
 from pydantic import ValidationError
 
 from ostra.constants import APP_NAME
+from ostra.errors.config_not_found_error import ConfigNotFoundError
 from ostra.models.app_config import AppConfig
 from ostra.utils.owner_only import ensure_owner_only_directory, open_owner_only_file
 
 # Earlier versions kept the config file here. An existing file at this path stays in use.
 LEGACY_CONFIG_PATH = Path.home() / "ostra" / "config.json"
 DEFAULT_CONFIG_PATH = user_config_path(APP_NAME) / "config.json"
-
-logger = logging.getLogger(__name__)
 
 
 def default_config_path() -> Path:
@@ -33,8 +31,7 @@ def default_config_path() -> Path:
 def load_config(config_path: Path | None = None) -> AppConfig:
     """Read the application settings from the JSON config file and the OSTRA_ environment variables.
 
-    Create the config file with the default settings when it does not exist. Each missing key uses its default
-    value. An environment variable overrides the key of the same name in the file.
+    Each missing key uses its default value. An environment variable overrides the key of the same name in the file.
 
     Args:
         config_path: Location of the JSON config file. Defaults to the path from default_config_path.
@@ -43,14 +40,14 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         The application settings.
 
     Raises:
+        ConfigNotFoundError: When the config file does not exist. Nothing is created.
         ValueError: When the config file does not contain a valid JSON object or when a setting is not valid.
     """
     if config_path is None:
         config_path = default_config_path()
 
     if not config_path.exists():
-        logger.info("Config file not found. Creating it. Path=%s", config_path)
-        _write_default_config(config_path)
+        raise ConfigNotFoundError(config_path)
 
     file_values = _read_file_values(config_path)
     try:
@@ -121,16 +118,6 @@ def save_config(config: AppConfig, config_path: Path | None = None) -> None:
     # Leave out the unset optional keys, so that a model change takes its own chunk size.
     values = config.model_dump(mode="json", exclude_none=True)
     _write_config_file(config_path, values)
-
-
-def _write_default_config(config_path: Path) -> None:
-    """Write the default settings to a new config file with owner-only permissions.
-
-    Args:
-        config_path: Location of the JSON config file to create.
-    """
-    # model_construct skips the environment variables, so that they are not written into the file.
-    save_config(AppConfig.model_construct(), config_path)
 
 
 def _write_config_file(config_path: Path, values: dict) -> None:

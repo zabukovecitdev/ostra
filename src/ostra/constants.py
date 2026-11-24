@@ -13,3 +13,4 @@ NO_DIRECTORIES_MESSAGE = (
     "No folders are configured. Run ostra config to add folders, "
     "or add them to the directories list in the config file."
 )
+NO_CONFIG_MESSAGE = "ostra is not set up yet. Run ostra config first."
