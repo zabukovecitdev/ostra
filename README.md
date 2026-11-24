@@ -108,31 +108,42 @@ uv sync
 ## Quick start
 
 ```bash
-ostra init                    # choose the model, the folders and the indexing settings step by step
+ostra config                  # first time: answer the setup questions step by step
 ostra index                   # process the configured folders
 ostra search "solar system" --limit 3
 ```
 
-`ostra init` asks one question at a time, with the current value as the default:
+### Setting up and changing settings
 
-1. The embedding model.
-2. For an Ollama model, the server address. ostra checks that the server answers and has the model, and prints the `ollama pull` command when it does not.
-3. The folders to index, and whether to include their subfolders.
-4. The chunk settings: the model defaults, or your own chunk size and overlap.
-5. The database location.
+`ostra config` works in one of two ways. `ostra init` is an alias of `ostra config`, kept for existing scripts.
 
-It shows a summary and saves the settings only when you confirm. Press Ctrl-C at any time to stop without saving. Run `ostra init` again later to change the settings. `ostra init --defaults --directory ~/notes` saves the settings without questions, for scripts.
+- **Walkthrough.** When there is no config file, or it has no folders, ostra asks one question at a time, with the current value as the default: the embedding model; for an Ollama model, the server address (ostra checks that the server answers and has the model, and prints the `ollama pull` command when it does not); the folders and whether to include their subfolders; the chunk settings; and the database location. Then it shows a summary.
+- **Settings menu.** Otherwise it shows the settings, each with its current value: Embedding model, Folders, Chunk settings and Database. The menu also offers Walk through all settings, Save and exit, and Exit without saving. Your changes collect in the menu until you choose Save and exit.
 
-ostra indexes only when you run `ostra index`. A change of the model, the folders, the subfolder setting, the chunk settings or the database needs a run of `ostra index` to reach the index. The summary of `ostra init` lists these changes, and after saving it offers to index right away. A plain `ostra index` is enough: it embeds the new chunks and removes the outdated chunks of each file it reads. `--reindex` is only needed to embed unchanged chunks again. After a model change, searches find nothing until `ostra index` has filled the index of the new model.
+The model list in the menu shows, for each model, whether it is the current one, how many files its index holds (or "not indexed yet"), and, for Ollama models, whether your Ollama server has the model.
+
+The save step shows one summary of the changes. A change of the model, the folders, the subfolder setting, the chunk settings or the database needs indexing. When folders are set, ostra then asks what to do:
+
+- **Save and index now.** Indexing runs first, and the settings are saved when it finishes.
+- **Save, index later.** The settings are saved, and `ostra index` fills the index later.
+- **Back to the menu.**
+
+Without such a change, the choices are Save and Back to the menu. Press Ctrl-C at any time to stop without saving.
+
+A model change is safe. With Save and index now, ostra embeds the files with the new model first, and searches keep using the old model until indexing finishes. Ctrl-C or an error saves nothing. The chunks embedded so far stay in the database, so running `ostra config` again continues where it stopped. If a custom chunk size does not fit the new model, ostra offers to reset it to the model default.
+
+Shortcuts: `ostra config model`, `ostra config folders`, `ostra config chunks` and `ostra config database` jump straight to one setting, then to the save step. `ostra config --defaults --directory ~/notes` saves the settings without questions and never indexes, which suits scripts.
+
+ostra indexes only when you run `ostra index`. A change of the model, the folders, the subfolder setting, the chunk settings or the database needs a run of `ostra index` to reach the index. A plain `ostra index` is enough: it embeds the new chunks and removes the outdated chunks of each file it reads. `--reindex` is only needed to embed unchanged chunks again. After a model change saved with Save, index later, searches find nothing until `ostra index` has filled the index of the new model.
 
 ## Configuration
 
-The config file is `config.json` in your user config folder, for example `~/.config/ostra/config.json` on Linux. It is created with defaults on the first run. An existing `~/ostra/config.json` from an earlier version is still used when it exists.
+The config file is `config.json` in your user config folder, for example `~/.config/ostra/config.json` on Linux. `ostra config` creates it when you save. `ostra index` and `ostra search` do not create it: without a config file they print `ostra is not set up yet. Run ostra config first.` and exit with status 1. An existing `~/ostra/config.json` from an earlier version is still used when it exists.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `database_path` | `ostra.db` in your user data folder, for example `~/.local/share/ostra/ostra.db` on Linux | SQLite database. |
-| `directories` | none | Folders to process. Add at least one before the first run. The top-level `.txt`, `.md` and `.csv` files are read, and the subfolders too when `recursive` is set. |
+| `directories` | none | Folders to process. Add at least one before the first index. The top-level `.txt`, `.md` and `.csv` files are read, and the subfolders too when `recursive` is set. |
 | `recursive` | `false` | Read the files in the subfolders of each folder too. Hidden subfolders, such as `.git`, are skipped. `ostra index --recursive` and `--no-recursive` override it for one run. |
 | `chunk_size_tokens` | not set | Tokens per chunk. When not set, the default of the embedding model applies (510 for every supported model). The value must fit the model input after its special tokens. |
 | `chunk_overlap_tokens` | `50` | Tokens shared by consecutive chunks |
@@ -153,8 +164,9 @@ For the Ollama models, the server address comes from the `OLLAMA_BASE_URL` envir
 
 | Command | Effect |
 |---|---|
-| `ostra init` | Set up the model, the Ollama connection, the folders and the indexing settings step by step |
-| `ostra init --defaults` | Save the current settings, or the defaults, without questions. Add `--directory PATH` to add a folder |
+| `ostra config` | Set up ostra the first time, or open the settings menu to change them. `ostra init` is an alias, kept for existing scripts |
+| `ostra config model` | Change only the embedding model, then go to the save step. The same goes for `folders`, `chunks` and `database` |
+| `ostra config --defaults` | Save the current settings, or the defaults, without questions and without indexing. Add `--directory PATH` to add a folder |
 | `ostra index` | Embed and store the new or changed chunks of the configured folders |
 | `ostra index --directory PATH` | Index one or more folders instead of the configured ones. Repeat the option for more folders. |
 | `ostra index --reindex` | Embed every chunk again, even those already stored |
@@ -202,11 +214,11 @@ systemctl --user daemon-reload
 ```
 src/ostra/
 ├── cli/                   command line: parser, command handlers, search output and file picker, progress bar
-│   └── init/              ostra init: the setup steps, and the Prompter with its questionary implementation
+│   └── config/            ostra config: the walkthrough, the settings menu, the setup steps, the draft of the answers, the Prompter and its questionary implementation
 ├── services/
 │   ├── ingestion/         pipeline, runner, text chunker, source factory, run_indexing
 │   ├── embedding/         EmbeddingModel bundle, provider registry and model factory
-│   ├── setup/             Ollama server check for ostra init
+│   ├── setup/             Ollama server check for ostra config
 │   └── ...                search service, index session
 ├── providers/             adapters to outside systems
 │   ├── sources/           DocumentSource (abstract) and the file system source
@@ -239,7 +251,7 @@ make check            # lint, format check, type check and tests
 | `make check` | Run all of the checks above |
 | `make evals v2-potion-multilingual` | Run the retrieval evals of a run folder, here `evals/runs/v2-potion-multilingual`. `v1-baseline` needs Ollama |
 
-The suite runs 306 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra init` tests answer the questions with a scripted prompter.
+The suite runs 334 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra config` tests answer the questions with a scripted prompter.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
 
