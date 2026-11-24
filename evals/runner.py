@@ -25,6 +25,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from evals.code_version import code_version, describe
 from ostra.models.app_config import AppConfig
 from ostra.models.chunk_match import ChunkMatch
 from ostra.repositories.sqlite.sqlite_chunk_store import SqliteChunkStore
@@ -48,6 +49,7 @@ DEFAULT_SEARCH_LIMIT = 50
 HIT_RANKS = (1, 3, 5)
 
 ModelBuilder = Callable[[AppConfig], EmbeddingModel]
+CodeVersionReader = Callable[[], dict]
 
 
 @dataclass(frozen=True)
@@ -273,6 +275,7 @@ def run_evals(
     run_directory: Path,
     build_model: ModelBuilder = build_embedding_model,
     datasets_directory: Path = DATASETS_DIRECTORY,
+    read_code_version: CodeVersionReader = code_version,
 ) -> dict:
     """Index the dataset of a run into a new database in the run folder, run every task and write output.json.
 
@@ -280,6 +283,7 @@ def run_evals(
         run_directory: The run folder.
         build_model: Builds the embedding model from the settings. Tests pass a fake model.
         datasets_directory: The folder that holds the datasets.
+        read_code_version: Describes the code that runs, before the run writes any file. Tests pass a fixed one.
 
     Returns:
         The content of output.json.
@@ -289,6 +293,7 @@ def run_evals(
     config = settings.app_config
     embedding_model = build_model(config)
     started_at = datetime.now(UTC).isoformat(timespec="seconds")
+    system = read_code_version()
     database_path = setup(run_directory)
 
     with SqliteChunkStore.open(database_path) as store:
@@ -308,6 +313,7 @@ def run_evals(
     output = {
         "run": run_directory.name,
         "started_at": started_at,
+        "system": system,
         "dataset": {
             "name": settings.dataset_name,
             "fingerprint": dataset_fingerprint(settings.dataset_directory),
@@ -340,6 +346,7 @@ def print_report(output: dict) -> None:
         mark = "ok  " if task["expected_rank"] == 1 else "MISS"
         print(f"{mark} rank={rank!s:>2} {task['seconds']:.3f}s  first={task['first_result']}  {task['question']}")
 
+    print(describe(output.get("system", {})))
     print(json.dumps(output["summary"], indent=2))
 
 

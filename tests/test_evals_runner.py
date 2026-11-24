@@ -20,6 +20,7 @@ from ostra.services.embedding.embedding_model import EmbeddingModel
 
 KEYWORDS = ("bees", "rivers", "stars", "ships")
 KEYWORD_SPEC = make_spec("keyword-model", len(KEYWORDS))
+FIXED_SYSTEM = {"commit": "abc123", "branch": "main", "uncommitted_changes": False, "uncommitted_changes_hash": None}
 
 
 class KeywordEmbeddingProvider(EmbeddingProvider):
@@ -65,7 +66,12 @@ def run_directory(tmp_path: Path) -> Path:
 
 
 def test_run_evals_writes_the_rank_of_each_expected_document(run_directory: Path, datasets_directory: Path):
-    output = run_evals(run_directory, build_model=build_keyword_model, datasets_directory=datasets_directory)
+    output = run_evals(
+        run_directory,
+        build_model=build_keyword_model,
+        datasets_directory=datasets_directory,
+        read_code_version=lambda: FIXED_SYSTEM,
+    )
 
     written = json.loads((run_directory / "output.json").read_text())
     assert written == output
@@ -73,6 +79,7 @@ def test_run_evals_writes_the_rank_of_each_expected_document(run_directory: Path
     assert [task["expected_rank"] for task in output["tasks"]] == [1, 1, None]
     assert all(task["seconds"] >= 0 for task in output["tasks"])
     assert output["run"] == "r-test"
+    assert output["system"] == FIXED_SYSTEM
     assert output["dataset"]["name"] == "tiny"
     assert output["dataset"]["documents"] == 3
     assert output["dataset"]["fingerprint"] == dataset_fingerprint(datasets_directory / "tiny")

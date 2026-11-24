@@ -16,6 +16,7 @@ tried against one dataset, with its results.
 ```
 evals/
   runner.py                     the code that runs a run folder
+  code_version.py               records which version of the code ran a run
   datasets/
     wiki-v1/
       tasks.json                the questions
@@ -33,6 +34,10 @@ baseline: run your current best settings on it first, then compare new settings 
 
 Every `output.json` records a `fingerprint` of its dataset: a SHA-256 hash of `tasks.json` and every document. Two
 runs are comparable only when their fingerprints are the same. If they differ, the dataset changed between them.
+
+Every `output.json` also records a `system` block: the git commit of the code that ran it. When two runs on the same
+dataset score differently, compare their commits to see whether the code changed between them. See
+[Which code ran a run](#which-code-ran-a-run).
 
 ## Trying a change
 
@@ -86,7 +91,7 @@ it documents the task and is ready for answer-generation evals later.
 
 ### output.json
 
-`dataset` holds the dataset's `name`, `fingerprint`, and its number of `documents` and `tasks`. `config` holds the
+`system` holds the version of the code that ran (see [Which code ran a run](#which-code-ran-a-run)). `dataset` holds the dataset's `name`, `fingerprint`, and its number of `documents` and `tasks`. `config` holds the
 settings the run actually used. `indexing.seconds` is the time to embed and store all documents.
 
 For each task:
@@ -107,6 +112,33 @@ The `summary` totals the run:
 | `mrr` | Mean reciprocal rank: the mean of 1/rank (0 when not found). 1.0 means every expected file came first |
 | `not_found` | Tasks whose expected file was not in the results at all |
 | `mean_seconds`, `median_seconds`, `max_seconds` | Search times |
+
+### Which code ran a run
+
+The `system` block of `output.json` records the version of the code and the machine:
+
+| Field | Meaning |
+|---|---|
+| `ostra_version` | Version of the ostra package from `pyproject.toml` |
+| `commit` | Full git commit hash of the code that ran. This is the real version of the code |
+| `branch` | Git branch that was checked out. `HEAD` when no branch was checked out, as in CI |
+| `uncommitted_changes` | `true` when the code differed from the commit: a file was edited or added and not committed yet |
+| `uncommitted_changes_hash` | SHA-256 of those changes, `null` when there are none |
+| `python`, `platform` | Python version and operating system. Search times depend on them |
+| `packages` | Versions of `fastembed`, `ollama`, `sqlite-vec` and `tokenizers`. An upgrade can change the scores |
+
+A commit alone does not say which code ran when there were changes that were not committed yet: two runs on the same
+commit can then run different code. `uncommitted_changes` tells you that happened, and `uncommitted_changes_hash`
+tells you whether two such runs had the same changes (same hash) or different ones. Only files that can change the
+results count as changes: `src/`, `evals/runner.py`, `evals/code_version.py`, `pyproject.toml` and `uv.lock`.
+Editing a run's `config.json` or rewriting its `output.json` does not count, because the settings are already in
+`output.json`.
+
+Treat a run with `uncommitted_changes: true` as a draft. Commit the code, then run again, before you keep the result
+as a baseline. The git fields are `null` when the code is not in a git repository or git is not installed.
+
+The report printed after a run shows the same in one line, for example
+`Code: f57e2af6260e on master, uncommitted changes 935b3c404818`.
 
 ## How big should a dataset be?
 
