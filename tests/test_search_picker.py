@@ -110,7 +110,7 @@ def test_pick_and_open__choices__show_similarity_path_count_and_preview():
     )
 
     first, second, quit_choice = prompter.choices[0]
-    assert first.title == f" 87%  {Path('/notes/a.md')}  (3 matches)"
+    assert first.title == " 87%  /notes/a.md  (3 matches)"
     assert first.value == "/notes/a.md"
     assert first.description.startswith("word word")
     assert first.description.endswith("...")
