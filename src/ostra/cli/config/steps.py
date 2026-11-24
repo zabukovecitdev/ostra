@@ -3,7 +3,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ostra.cli.config.draft import SetupContext, SetupDraft
-from ostra.cli.config.prompter import Choice, SetupCancelled
+from ostra.cli.config.prompter import Choice
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS
 from ostra.enums.embedding_provider_name import EmbeddingProviderName
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS, get_model_spec
@@ -28,6 +28,18 @@ CONNECTION_CHOICES = (
     Choice("Check again", RETRY),
     Choice("Change the address", CHANGE_ADDRESS),
     Choice("Save the settings anyway", CONTINUE),
+)
+
+# The answers of the save step.
+SAVE = "save"
+BACK_TO_MENU = "menu"
+INDEX_NOW = "index_now"
+INDEX_LATER = "index_later"
+SAVE_CHOICES = (Choice("Save", SAVE), Choice("Back to the menu", BACK_TO_MENU))
+INDEX_CHOICES = (
+    Choice("Save and index now", INDEX_NOW),
+    Choice("Save, index later", INDEX_LATER),
+    Choice("Back to the menu", BACK_TO_MENU),
 )
 
 
@@ -59,7 +71,7 @@ def choose_folders(context: SetupContext) -> None:
         if not prompter.confirm("Keep these folders?", default=True):
             draft.directories = []
 
-    _add_unique(draft.directories, context.given_directories)
+    add_given_folders(context)
     _add_folders(context)
     if not draft.directories:
         print("No folders yet. Run ostra config again or pass folders to ostra index.")
@@ -81,7 +93,7 @@ def choose_indexing_settings(context: SetupContext) -> None:
         draft.chunk_overlap_tokens = DEFAULT_CHUNK_OVERLAP_TOKENS
         return
 
-    largest = spec.max_tokens - spec.special_tokens
+    largest = _largest_chunk(spec)
     size = prompter.integer(
         f"Tokens per chunk (1 to {largest}):",
         default=min(draft.chunk_size_tokens or spec.default_chunk_size_tokens, largest),
@@ -103,30 +115,87 @@ def choose_database(context: SetupContext) -> None:
         draft.database_path = _absolute(answer)
 
 
-def confirm_summary(context: SetupContext) -> None:
-    """Show the answers and ask whether to save them.
-
-    Raises:
-        SetupCancelled: When the user does not want to save.
-    """
-    print(_summary(context.draft, context.index_changes()))
-    if not context.prompter.confirm(f"Save these settings to {context.config_path}?", default=True):
-        raise SetupCancelled
-
-
-SETUP_STEPS: tuple[SetupStep, ...] = (
+WALKTHROUGH_STEPS: tuple[SetupStep, ...] = (
     choose_model,
     configure_connection,
     choose_folders,
     choose_indexing_settings,
     choose_database,
-    confirm_summary,
 )
+
+
+def fit_chunk_size(context: SetupContext) -> None:
+    """After a model change, offer the model default when the chunk size does not fit the new model."""
+    draft, prompter = context.draft, context.prompter
+    spec = _model(draft)
+    largest = _largest_chunk(spec)
+    if draft.chunk_size_tokens is None or draft.chunk_size_tokens <= largest:
+        return
+
+    print(
+        f"The chunk size of {draft.chunk_size_tokens} tokens does not fit {spec.model_id}, which takes up to {largest}."
+    )
+    if prompter.confirm(f"Use the model default of {spec.default_chunk_size_tokens} tokens per chunk?", default=True):
+        draft.chunk_size_tokens = None
+        return
+
+    choose_indexing_settings(context)
+
+
+def add_given_folders(context: SetupContext) -> None:
+    """Add the folders of the --directory option that the configured folders do not have yet."""
+    _add_unique(context.draft.directories, context.given_directories)
+
+
+def save_step(context: SetupContext) -> bool:
+    """Show the answers and ask what to do with them.
+
+    Without a person to answer, the settings are saved and not indexed.
+
+    Returns:
+        True when the settings are to be saved, False when the user goes back to the menu. The context tells
+        whether to index right after saving.
+    """
+    print(_summary(context.draft, context.index_changes()))
+    if not context.prompter.interactive:
+        context.index_now = False
+        return True
+
+    if context.index_changes() and context.draft.directories:
+        choice = context.prompter.select("What now?", INDEX_CHOICES, default=INDEX_NOW)
+    else:
+        choice = context.prompter.select(f"Save these settings to {context.config_path}?", SAVE_CHOICES, default=SAVE)
+    context.index_now = choice == INDEX_NOW
+    return choice != BACK_TO_MENU
+
+
+def run_steps(steps: Sequence[SetupStep], context: SetupContext) -> None:
+    """Run the steps in order."""
+    for step in steps:
+        step(context)
+
+
+def describe_folders(draft: SetupDraft) -> str:
+    """Name the folders, comma separated, or none."""
+    return ", ".join(str(folder) for folder in draft.directories) or "none"
+
+
+def describe_chunks(draft: SetupDraft) -> str:
+    """Show the chunk size and the overlap, with the model default for the size when none is set."""
+    if draft.chunk_size_tokens is None:
+        return f"model default ({_model(draft).default_chunk_size_tokens} / {draft.chunk_overlap_tokens})"
+
+    return f"{draft.chunk_size_tokens} / {draft.chunk_overlap_tokens}"
 
 
 def _model(draft: SetupDraft) -> EmbeddingModelSpec:
     """Return the spec of the chosen model."""
     return get_model_spec(draft.embedding_model)
+
+
+def _largest_chunk(spec: EmbeddingModelSpec) -> int:
+    """Return the most tokens that a chunk may have: the model input without the special tokens."""
+    return spec.max_tokens - spec.special_tokens
 
 
 def _model_description(spec: EmbeddingModelSpec) -> str:
@@ -189,13 +258,11 @@ def _add_unique(folders: list[Path], new_folders: Sequence[Path]) -> None:
 
 def _summary(draft: SetupDraft, changes: tuple[str, ...]) -> str:
     """Describe the answers, one setting per line, and the changes that need indexing."""
-    chunk_size = draft.chunk_size_tokens or f"model default ({_model(draft).default_chunk_size_tokens})"
     rows: list[tuple[str, object]] = [
         ("Model", draft.embedding_model),
-        ("Folders", ", ".join(str(folder) for folder in draft.directories) or "none"),
+        ("Folders", describe_folders(draft)),
         ("Subfolders", "yes" if draft.recursive else "no"),
-        ("Chunk size", chunk_size),
-        ("Chunk overlap", draft.chunk_overlap_tokens),
+        ("Chunks", describe_chunks(draft)),
         ("Database", draft.database_path),
     ]
     if _model(draft).provider is EmbeddingProviderName.OLLAMA:

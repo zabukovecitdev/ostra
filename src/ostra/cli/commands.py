@@ -6,7 +6,7 @@ from pathlib import Path
 import httpx
 from ollama import ResponseError
 
-from ostra.cli.config.prompter import DefaultsPrompter, Prompter, SetupCancelled
+from ostra.cli.config.prompter import DefaultsPrompter, Prompter
 from ostra.cli.config.questionary_prompter import QuestionaryPrompter
 from ostra.cli.config.wizard import SetupResult, run_setup
 from ostra.cli.progress import ProgressReporter
@@ -15,11 +15,14 @@ from ostra.cli.search_picker import pick_and_open
 from ostra.constants import NO_DIRECTORIES_MESSAGE
 from ostra.models.app_config import AppConfig
 from ostra.providers.sources.document_source import DocumentSource
-from ostra.repositories.config_repository import default_config_path, load_config
+from ostra.repositories.config_repository import default_config_path, load_config, save_config
 from ostra.services.chunk_search_service import ChunkSearchService
 from ostra.services.index_session import IndexSession, open_index
 from ostra.services.ingestion.indexing_service import run_indexing
 from ostra.services.ingestion.source_factory import build_sources
+
+# The errors that stop an indexing run with a message instead of a traceback.
+_INDEX_ERRORS = (ConnectionError, httpx.HTTPError, ResponseError, ValueError, sqlite3.Error)
 
 
 def run_index(arguments: argparse.Namespace, config: AppConfig, session: IndexSession) -> None:
@@ -42,7 +45,7 @@ def run_index(arguments: argparse.Namespace, config: AppConfig, session: IndexSe
 
 
 def run_config(arguments: argparse.Namespace) -> None:
-    """Ask the setup questions, save the settings and index the folders when a change needs it.
+    """Ask the setup questions, save the settings and index the folders when the user asks for it.
 
     Args:
         arguments: The parsed config arguments.
@@ -58,18 +61,13 @@ def run_config(arguments: argparse.Namespace) -> None:
     _require_folders(given)
     prompter: Prompter = DefaultsPrompter() if arguments.defaults else QuestionaryPrompter()
     config_path = default_config_path()
-    result = run_setup(prompter, config_path, directories=given)
-    if result is None and arguments.defaults:
-        raise SystemExit(1)
-
-    if result is None or not (result.index_changes and result.config.directories):
+    result = run_setup(prompter, config_path, directories=given, shortcut=arguments.setting)
+    if result is None:
+        if arguments.defaults:
+            raise SystemExit(1)
         return
 
-    if arguments.defaults or not _confirm_index(prompter):
-        _print_index_reminder(result)
-        return
-
-    _index_saved_settings(config_path)
+    _apply_result(result, config_path)
 
 
 def _require_folders(folders: list[Path]) -> None:
@@ -84,12 +82,20 @@ def _require_folders(folders: list[Path]) -> None:
         raise SystemExit(2)
 
 
-def _confirm_index(prompter: Prompter) -> bool:
-    """Ask whether to index now. Ctrl-C counts as no, because the settings are already saved."""
-    try:
-        return prompter.confirm("Index now to apply the changes?", default=True)
-    except SetupCancelled:
-        return False
+def _apply_result(result: SetupResult, config_path: Path) -> None:
+    """Index now when the user chose to, or remind the user to run ostra index when a change needs it."""
+    if result.index_now:
+        _index_after_save(result, config_path)
+    elif result.index_changes and result.config.directories:
+        _print_index_reminder(result)
+
+
+def _index_after_save(result: SetupResult, config_path: Path) -> None:
+    """Index with the chosen settings. The settings of a model change are saved only after indexing."""
+    if result.model_changed:
+        _index_then_save(result, config_path)
+    else:
+        _index_saved_settings(config_path)
 
 
 def _print_index_reminder(result: SetupResult) -> None:
@@ -97,6 +103,45 @@ def _print_index_reminder(result: SetupResult) -> None:
     print(f"Run ostra index to apply the changes ({', '.join(result.index_changes)}).")
     if result.model_changed:
         print("Searches with the new model find nothing until then.")
+
+
+def _index_then_save(result: SetupResult, config_path: Path) -> None:
+    """Index with the new model, and save the settings only when indexing finished.
+
+    A failure or Ctrl-C keeps the old settings in the file, so that the old model still matches the index.
+
+    Args:
+        result: The answers of the setup, with the new settings.
+        config_path: The config file to write.
+    """
+    if _index_new_settings(result.config):
+        save_config(result.config, config_path)
+        print(f"Settings saved to {config_path}.")
+        return
+
+    print(
+        f"The settings were not saved, so ostra still uses {result.previous_model}. "
+        "Chunks embedded so far are kept; run ostra config again to continue."
+    )
+
+
+def _index_new_settings(config: AppConfig) -> bool:
+    """Index with the settings that are not saved yet, and report a failure or Ctrl-C.
+
+    Returns:
+        True when indexing finished.
+    """
+    try:
+        error = _index_settings(config)
+    except KeyboardInterrupt:
+        print("Indexing stopped.")
+        return False
+
+    if error is None:
+        return True
+
+    print(f"Indexing stopped: {error}")
+    return False
 
 
 def _index_saved_settings(config_path: Path) -> None:
@@ -110,12 +155,36 @@ def _index_saved_settings(config_path: Path) -> None:
     """
     try:
         config = load_config(config_path)
+    except ValueError as error:
+        print(_failure_message(error))
+        return
+
+    failure = _index_settings(config)
+    if failure is not None:
+        print(_failure_message(failure))
+
+
+def _index_settings(config: AppConfig) -> Exception | None:
+    """Index the configured folders with these settings.
+
+    Returns:
+        The error that stopped the indexing, or None when indexing finished.
+    """
+    try:
         with open_index(config, create=True) as session:
             _index_with_progress(config, session, build_sources(config))
-    except (ConnectionError, httpx.HTTPError, ResponseError) as error:
-        print(f"Indexing stopped: {error}\nCheck the Ollama server, then run ostra index.")
-    except (ValueError, sqlite3.Error) as error:
-        print(f"Indexing stopped: {error}\nFix the problem, then run ostra index.")
+    except _INDEX_ERRORS as error:
+        return error
+
+    return None
+
+
+def _failure_message(error: Exception) -> str:
+    """Say why indexing stopped and what the user can do about it."""
+    if isinstance(error, (ConnectionError, httpx.HTTPError, ResponseError)):
+        return f"Indexing stopped: {error}\nCheck the Ollama server, then run ostra index."
+
+    return f"Indexing stopped: {error}\nFix the problem, then run ostra index."
 
 
 def _index_with_progress(

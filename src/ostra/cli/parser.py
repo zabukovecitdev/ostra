@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 
 from ostra.cli.commands import run_config, run_index, run_search
+from ostra.cli.config.menu import SETTING_SHORTCUTS
 from ostra.models.embedding_model_registry import EMBEDDING_MODELS
 
 DEFAULT_SEARCH_LIMIT = 5
@@ -40,6 +41,13 @@ def build_parser() -> argparse.ArgumentParser:
         description="Walk through the setup the first time, and change single settings later.",
     )
     config.set_defaults(handler=run_config, needs_index=False)
+    config.add_argument(
+        "setting",
+        nargs="?",
+        choices=list(SETTING_SHORTCUTS),
+        help="Change only this setting: model, folders, chunks or database. Ignored when there is no config file "
+        "with folders yet, because the setup then asks every question.",
+    )
     config.add_argument(
         "--defaults",
         action="store_true",

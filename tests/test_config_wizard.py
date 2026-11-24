@@ -6,13 +6,15 @@ from pathlib import Path
 import pytest
 
 from ostra.cli.config.draft import SetupServices
-from ostra.cli.config.prompter import Choice, DefaultsPrompter, Prompter, Validator
+from ostra.cli.config.prompter import Choice, DefaultsPrompter, Prompter, SetupCancelled, Validator
 from ostra.cli.config.steps import CHANGE_ADDRESS, CONTINUE, RETRY
 from ostra.cli.config.wizard import run_setup
 from ostra.constants import DEFAULT_CHUNK_OVERLAP_TOKENS
 from ostra.services.setup.ollama_check import OllamaStatus
 
 KEEP = object()  # Answer with the default of the question.
+CANCEL = object()  # Press Ctrl-C at the question.
+MENU_QUESTION = "What do you want to change?"
 
 
 class ScriptedPrompter(Prompter):
@@ -46,6 +48,9 @@ class ScriptedPrompter(Prompter):
         self.questions.append(message)
         assert self._answers, f"No answer left for: {message}"
         answer = self._answers.pop(0)
+        if answer is CANCEL:
+            raise SetupCancelled
+
         return default if answer is KEEP else answer
 
     def finished(self) -> bool:
@@ -75,12 +80,16 @@ def read(config_path: Path) -> dict:
     return json.loads(config_path.read_text())
 
 
+def write_config(config_path: Path, settings: dict) -> None:
+    config_path.write_text(json.dumps(settings))
+
+
 def test_run_setup__default_model_with_one_folder__saves_settings(tmp_path: Path):
     """Save the chosen folder and the subfolder answer with the default model and chunk settings."""
     notes = tmp_path / "notes"
     notes.mkdir()
     config_path = tmp_path / "config.json"
-    prompter = ScriptedPrompter(["potion-multilingual-128m", str(notes), "", True, True, True, True])
+    prompter = ScriptedPrompter(["potion-multilingual-128m", str(notes), "", True, True, True, "index_later"])
 
     result = run_setup(prompter, config_path, make_services()[0])
 
@@ -94,10 +103,41 @@ def test_run_setup__default_model_with_one_folder__saves_settings(tmp_path: Path
     assert prompter.finished()
 
 
-def test_run_setup__cancelled_at_summary__writes_no_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
-    """Write nothing when the user does not confirm the summary."""
+def test_run_setup__no_config_file__walks_through_every_setting(tmp_path: Path):
+    """Ask every setting in order when there is no config file, and then ask to save."""
+    prompter = ScriptedPrompter([KEEP, "", False, True, True, "save"])
+
+    assert run_setup(prompter, tmp_path / "config.json", make_services()[0]) is not None
+
+    assert prompter.questions[0] == "Which embedding model should ostra use?"
+    assert MENU_QUESTION not in prompter.questions
+
+
+def test_run_setup__config_without_folders__walks_through_every_setting(tmp_path: Path):
+    """Walk through the settings, not the menu, when the config file has no folders yet."""
     config_path = tmp_path / "config.json"
-    prompter = ScriptedPrompter([KEEP, "", False, True, True, False])
+    write_config(config_path, {"recursive": True})
+    prompter = ScriptedPrompter([KEEP, "", KEEP, True, True, "save"])
+
+    assert run_setup(prompter, config_path, make_services()[0]) is not None
+
+    assert prompter.questions[0] == "Which embedding model should ostra use?"
+    assert MENU_QUESTION not in prompter.questions
+
+
+def test_run_setup__cancelled_in_walkthrough__writes_no_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    """Write nothing when the user presses Ctrl-C at the first question."""
+    config_path = tmp_path / "config.json"
+
+    assert run_setup(ScriptedPrompter([CANCEL]), config_path, make_services()[0]) is None
+    assert not config_path.exists()
+    assert "Nothing was saved" in capsys.readouterr().out
+
+
+def test_run_setup__back_to_menu_then_exit__writes_no_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+    """Write nothing when the user goes back to the menu from the save step and then exits."""
+    config_path = tmp_path / "config.json"
+    prompter = ScriptedPrompter([KEEP, "", False, True, True, "menu", "exit"])
 
     assert run_setup(prompter, config_path, make_services()[0]) is None
     assert not config_path.exists()
@@ -108,7 +148,7 @@ def test_run_setup__missing_folder__asks_again(tmp_path: Path):
     """Reject a folder that does not exist and accept the next answer."""
     notes = tmp_path / "notes"
     notes.mkdir()
-    prompter = ScriptedPrompter([KEEP, str(tmp_path / "missing"), str(notes), "", False, True, True, True])
+    prompter = ScriptedPrompter([KEEP, str(tmp_path / "missing"), str(notes), "", False, True, True, "index_later"])
 
     result = run_setup(prompter, tmp_path / "config.json", make_services()[0])
 
@@ -116,24 +156,26 @@ def test_run_setup__missing_folder__asks_again(tmp_path: Path):
     assert prompter.errors == ["The folder does not exist."]
 
 
-def test_run_setup__existing_config__offers_current_values(tmp_path: Path):
-    """Keep the folders and the model of an existing config file when the user presses Enter."""
+def test_run_setup__existing_config__offers_current_values_in_walkthrough(tmp_path: Path):
+    """Keep the folders and the subfolder answer of an existing config file when the user presses Enter."""
     notes = tmp_path / "notes"
     notes.mkdir()
     config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"directories": [str(notes)], "recursive": True}))
-    prompter = ScriptedPrompter([KEEP, KEEP, "", KEEP, KEEP, KEEP, KEEP])
+    write_config(config_path, {"directories": [str(notes)], "recursive": True})
+    # The menu, then the walkthrough, which keeps every value, then back to the menu and save.
+    prompter = ScriptedPrompter(["all", KEEP, KEEP, "", KEEP, KEEP, KEEP, "save", "save"])
 
     result = run_setup(prompter, config_path, make_services()[0])
 
     assert result is not None
     assert (result.config.directories, result.config.recursive) == ([notes], True)
+    assert prompter.finished()
 
 
 def test_run_setup__custom_chunk_size_too_large__asks_again(tmp_path: Path):
     """Reject a chunk size above the model input and save the next valid answer."""
     config_path = tmp_path / "config.json"
-    prompter = ScriptedPrompter([KEEP, "", False, False, "9999", "300", "40", True, True])
+    prompter = ScriptedPrompter([KEEP, "", False, False, "9999", "300", "40", True, "save"])
 
     run_setup(prompter, config_path, make_services()[0])
 
@@ -144,7 +186,7 @@ def test_run_setup__custom_chunk_size_too_large__asks_again(tmp_path: Path):
 
 def test_run_setup__overlap_not_below_chunk_size__asks_again(tmp_path: Path):
     """Reject an overlap that is as large as the chunk size."""
-    prompter = ScriptedPrompter([KEEP, "", False, False, "100", "100", "abc", "10", True, True])
+    prompter = ScriptedPrompter([KEEP, "", False, False, "100", "100", "abc", "10", True, "save"])
 
     result = run_setup(prompter, tmp_path / "config.json", make_services()[0])
 
@@ -155,7 +197,7 @@ def test_run_setup__overlap_not_below_chunk_size__asks_again(tmp_path: Path):
 def test_run_setup__ollama_model_present__saves_address(tmp_path: Path):
     """Check the Ollama server for the model and save an address other than the default."""
     services, calls = make_services([OllamaStatus(reachable=True, model_present=True)])
-    prompter = ScriptedPrompter(["bge-m3", "http://gpu-box:11434", "", False, True, True, True])
+    prompter = ScriptedPrompter(["bge-m3", "http://gpu-box:11434", "", False, True, True, "save"])
 
     result = run_setup(prompter, tmp_path / "config.json", services)
 
@@ -167,7 +209,7 @@ def test_run_setup__default_ollama_address_kept__saves_no_address(tmp_path: Path
     """Save no address when the user keeps the default, so that OLLAMA_BASE_URL keeps working later."""
     monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
     services, calls = make_services([OllamaStatus(reachable=True, model_present=True)])
-    prompter = ScriptedPrompter(["bge-m3", KEEP, "", False, True, True, True])
+    prompter = ScriptedPrompter(["bge-m3", KEEP, "", False, True, True, "save"])
 
     run_setup(prompter, tmp_path / "config.json", services)
 
@@ -190,7 +232,7 @@ def test_run_setup__defaults_with_unreachable_ollama__checks_once_and_saves(tmp_
 def test_run_setup__ollama_model_missing__prints_pull_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     """Show the pull command when the server lacks the model, and save when the user goes on."""
     services, _ = make_services([OllamaStatus(reachable=True, model_present=False)])
-    prompter = ScriptedPrompter(["mxbai-embed-large", KEEP, CONTINUE, "", False, True, True, True])
+    prompter = ScriptedPrompter(["mxbai-embed-large", KEEP, CONTINUE, "", False, True, True, "save"])
 
     result = run_setup(prompter, tmp_path / "config.json", services)
 
@@ -208,7 +250,7 @@ def test_run_setup__ollama_unreachable__retries_and_changes_address(tmp_path: Pa
         ]
     )
     answers = ["bge-m3", "http://localhost:11434", RETRY, CHANGE_ADDRESS, "http://192.168.1.20:11434"]
-    prompter = ScriptedPrompter([*answers, "", False, True, True, True])
+    prompter = ScriptedPrompter([*answers, "", False, True, True, "save"])
 
     result = run_setup(prompter, tmp_path / "config.json", services)
 
@@ -223,7 +265,7 @@ def test_run_setup__ollama_unreachable__retries_and_changes_address(tmp_path: Pa
 def test_run_setup__invalid_ollama_address__asks_again(tmp_path: Path):
     """Reject an address without a scheme."""
     services, _ = make_services([OllamaStatus(reachable=True, model_present=True)])
-    prompter = ScriptedPrompter(["bge-m3", "localhost", "http://localhost:11434", "", False, True, True, True])
+    prompter = ScriptedPrompter(["bge-m3", "localhost", "http://localhost:11434", "", False, True, True, "save"])
 
     run_setup(prompter, tmp_path / "config.json", services)
 
@@ -233,7 +275,7 @@ def test_run_setup__invalid_ollama_address__asks_again(tmp_path: Path):
 def test_run_setup__new_database_path__saves_it(tmp_path: Path):
     """Save the database path that the user enters."""
     database = tmp_path / "data" / "notes.db"
-    prompter = ScriptedPrompter([KEEP, "", False, True, False, str(database), True])
+    prompter = ScriptedPrompter([KEEP, "", False, True, False, str(database), "save"])
 
     result = run_setup(prompter, tmp_path / "config.json", make_services()[0])
 
@@ -287,7 +329,7 @@ def test_run_setup__invalid_config_user_replaces_it__saves_new_settings(tmp_path
     """Start from the defaults and save when the user agrees to replace the file."""
     config_path = tmp_path / "config.json"
     config_path.write_text("not json")
-    prompter = ScriptedPrompter([True, KEEP, "", False, True, True, True])
+    prompter = ScriptedPrompter([True, KEEP, "", False, True, True, "save"])
 
     assert run_setup(prompter, config_path, make_services()[0]) is not None
     assert read(config_path)["embedding_model"] == "potion-multilingual-128m"
@@ -297,9 +339,9 @@ def test_run_setup__configured_folders_replaced__keeps_given_folders(tmp_path: P
     """Keep the folders of the --directory option when the user drops the configured folders."""
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps({"directories": [str(tmp_path / "old")]}))
-    prompter = ScriptedPrompter([KEEP, False, "", False, True, True, True])
+    prompter = ScriptedPrompter([False, "", False, "index_later"])
 
-    result = run_setup(prompter, config_path, make_services()[0], directories=[tmp_path / "given"])
+    result = run_setup(prompter, config_path, make_services()[0], directories=[tmp_path / "given"], shortcut="folders")
 
     assert result is not None and result.config.directories == [tmp_path / "given"]
 
@@ -318,7 +360,7 @@ def test_run_setup__nothing_changed__needs_no_index(tmp_path: Path):
 
 def test_run_setup__chunk_size_changed__needs_index(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     """Name the chunk size as a change that needs indexing, in the summary and the result."""
-    prompter = ScriptedPrompter([KEEP, "", False, False, "300", "40", True, True])
+    prompter = ScriptedPrompter([KEEP, "", False, False, "300", "40", True, "save"])
 
     result = run_setup(prompter, tmp_path / "config.json", make_services()[0])
 
@@ -331,11 +373,12 @@ def test_run_setup__chunk_size_changed__needs_index(tmp_path: Path, capsys: pyte
 def test_run_setup__model_changed__reports_model_change(tmp_path: Path):
     """Report a model change, which leaves the new model with an empty index."""
     services, _ = make_services([OllamaStatus(reachable=True, model_present=True)])
-    prompter = ScriptedPrompter(["bge-m3", KEEP, "", False, True, True, True])
+    prompter = ScriptedPrompter(["bge-m3", KEEP, "", False, True, True, "save"])
 
     result = run_setup(prompter, tmp_path / "config.json", services)
 
     assert result is not None and result.model_changed
+    assert result.previous_model == "potion-multilingual-128m"
 
 
 def test_run_setup__folders_in_other_order__is_no_change(tmp_path: Path):
@@ -343,11 +386,11 @@ def test_run_setup__folders_in_other_order__is_no_change(tmp_path: Path):
     one, two = tmp_path / "one", tmp_path / "two"
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps({"directories": [str(one), str(two)]}))
-    prompter = ScriptedPrompter([KEEP, False, str(two), str(one), "", False, True, True, True])
+    prompter = ScriptedPrompter([False, str(two), str(one), "", False, "save"])
     one.mkdir()
     two.mkdir()
 
-    result = run_setup(prompter, config_path, make_services()[0])
+    result = run_setup(prompter, config_path, make_services()[0], shortcut="folders")
 
     assert result is not None and result.index_changes == ()
 
@@ -381,8 +424,39 @@ def test_run_setup__address_from_environment_kept__saves_it(tmp_path: Path, monk
     """Save the address that OLLAMA_BASE_URL offered, so that a shell without the variable uses it too."""
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://gpu:11434")
     services, _ = make_services([OllamaStatus(reachable=True, model_present=True)])
-    prompter = ScriptedPrompter(["bge-m3", KEEP, "", False, True, True, True])
+    prompter = ScriptedPrompter(["bge-m3", KEEP, "", False, True, True, "save"])
 
     run_setup(prompter, tmp_path / "config.json", services)
 
     assert read(tmp_path / "config.json")["ollama_base_url"] == "http://gpu:11434"
+
+
+def test_run_setup__index_now_with_model_change__leaves_saving_to_caller(tmp_path: Path):
+    """Do not save a model change that the user wants indexed first, because the caller saves it after indexing."""
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    config_path = tmp_path / "config.json"
+    write_config(config_path, {"embedding_model": "bge-m3", "directories": [str(notes)]})
+    original = config_path.read_text()
+    prompter = ScriptedPrompter(["model", "potion-multilingual-128m", "save", "index_now"])
+
+    result = run_setup(prompter, config_path, make_services()[0])
+
+    assert result is not None and result.index_now and result.model_changed
+    assert result.config.embedding_model == "potion-multilingual-128m"
+    assert config_path.read_text() == original
+
+
+def test_run_setup__index_now_without_model_change__saves_before_caller_indexes(tmp_path: Path):
+    """Save a change that does not need the model at once, so that the caller can index with the saved settings."""
+    notes, more = tmp_path / "notes", tmp_path / "more"
+    notes.mkdir()
+    more.mkdir()
+    config_path = tmp_path / "config.json"
+    write_config(config_path, {"embedding_model": "bge-m3", "directories": [str(notes)]})
+    prompter = ScriptedPrompter(["folders", KEEP, str(more), "", KEEP, "save", "index_now"])
+
+    result = run_setup(prompter, config_path, make_services()[0])
+
+    assert result is not None and result.index_now and not result.model_changed
+    assert read(config_path)["directories"] == [str(notes), str(more)]

@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 from conftest import make_fake_model
+from test_config_wizard import CANCEL, KEEP, ScriptedPrompter
 from test_search_picker import PickingPrompter
 
 from ostra.cli import commands, main
-from ostra.cli.config.prompter import SetupCancelled
 from ostra.cli.config.wizard import SetupResult
 from ostra.cli.parser import build_parser
 from ostra.cli.search_output import MAX_SHORT_TEXT_CHARACTERS
@@ -339,7 +339,9 @@ def test_main__config__runs_setup_without_opening_the_index(monkeypatch: pytest.
     monkeypatch.setattr(
         commands,
         "run_setup",
-        lambda prompter, path, directories: setup_calls.append(path) or SetupResult(AppConfig(), ()),
+        lambda prompter, path, **kwargs: (
+            setup_calls.append(path) or SetupResult(AppConfig(), (), "potion-multilingual-128m")
+        ),
     )
 
     main.main(["config", "--defaults"])
@@ -387,58 +389,53 @@ def test_main__init_alias__runs_config(
     assert "Run ostra index to apply the changes (folders)." in capsys.readouterr().out
 
 
-class AnswerPrompter:
-    """Answer the index question with a fixed answer, or press Ctrl-C."""
-
-    interactive = True
-
-    def __init__(self, answer: bool | None):
-        self._answer = answer
-        self.questions: list[str] = []
-
-    def confirm(self, message: str, default: bool = True) -> bool:
-        self.questions.append(message)
-        if self._answer is None:
-            raise SetupCancelled
-        return self._answer
-
-
-def _run_config_with_folder(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answer: bool | None, changes: tuple[str, ...] = ("folders",)
-) -> AnswerPrompter:
-    """Run ostra config with a setup that saves one folder and reports the changes, and answer the index question."""
-    config_path = tmp_path / "config.json"
+def _run_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, answers: list[object]) -> ScriptedPrompter:
+    """Run ostra config on a config file with one folder and the bge-m3 model, and answer its questions."""
     notes = tmp_path / "notes"
-    notes.mkdir()
+    notes.mkdir(exist_ok=True)
     (notes / "a.txt").write_text("alpha beta\n")
-    config_path.write_text(json.dumps({"directories": [str(notes)], "database_path": str(tmp_path / "file.db")}))
-    monkeypatch.setattr(commands.sys.stdin, "isatty", lambda: True)
-    prompter = AnswerPrompter(answer)
-    monkeypatch.setattr(commands, "QuestionaryPrompter", lambda: prompter)
-    monkeypatch.setattr(commands, "default_config_path", lambda: config_path)
-    monkeypatch.setattr(
-        commands,
-        "run_setup",
-        lambda prompter, path, directories: SetupResult(
-            AppConfig.from_file_values(json.loads(path.read_text())), changes
-        ),
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "directories": [str(notes)],
+                "embedding_model": "bge-m3",
+                "database_path": str(tmp_path / "file.db"),
+            }
+        )
     )
+    monkeypatch.setattr(commands.sys.stdin, "isatty", lambda: True)
+    prompter = ScriptedPrompter(answers)
+    monkeypatch.setattr(commands, "QuestionaryPrompter", lambda: prompter)
+    monkeypatch.setattr(commands, "default_config_path", lambda: tmp_path / "config.json")
     main.main(["config"])
     return prompter
 
 
-def test_main__config_ctrl_c_at_index_question__returns_quietly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """Return without a traceback when the user presses Ctrl-C after the settings are saved."""
-    _run_config_with_folder(monkeypatch, tmp_path, answer=None)
+def _add_folder_answers(tmp_path: Path, save_choice: str) -> list[object]:
+    """Answer the menu by adding one folder, and the save step with the given choice."""
+    more = tmp_path / "more"
+    more.mkdir(exist_ok=True)
+    return ["folders", KEEP, str(more), "", KEEP, "save", save_choice]
 
+
+def _saved_model(tmp_path: Path) -> str:
+    """Return the embedding model that the config file holds."""
+    return json.loads((tmp_path / "config.json").read_text())["embedding_model"]
+
+
+def test_main__config_ctrl_c_in_menu__saves_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Return without a traceback and save nothing when the user presses Ctrl-C in the menu."""
+    _run_config(monkeypatch, tmp_path, [CANCEL])
+
+    assert _saved_model(tmp_path) == "bge-m3"
     assert not (tmp_path / "file.db").exists()
 
 
-def test_main__config_index_now__uses_environment_like_ostra_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_main__config_index_now_uses_environment_like_ostra_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Index into the database of OSTRA_DATABASE_PATH, as ostra index and ostra search do."""
     monkeypatch.setenv("OSTRA_DATABASE_PATH", str(tmp_path / "env.db"))
 
-    _run_config_with_folder(monkeypatch, tmp_path, answer=True)
+    _run_config(monkeypatch, tmp_path, _add_folder_answers(tmp_path, "index_now"))
 
     assert (tmp_path / "env.db").is_file()
     assert not (tmp_path / "file.db").exists()
@@ -454,9 +451,61 @@ def test_main__config_index_now_server_down__prints_message(
 
     monkeypatch.setattr(commands, "run_indexing", refuse)
 
-    _run_config_with_folder(monkeypatch, tmp_path, answer=True)
+    _run_config(monkeypatch, tmp_path, _add_folder_answers(tmp_path, "index_now"))
 
     assert "Indexing stopped: Failed to connect to Ollama." in capsys.readouterr().out
+
+
+def test_main__config_model_change_index_now__indexes_before_saving(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Index with the new model while the config file still holds the old one, then save the new model."""
+    models_seen_while_indexing: list[str] = []
+    monkeypatch.setattr(
+        commands,
+        "run_indexing",
+        lambda **kwargs: models_seen_while_indexing.append(_saved_model(tmp_path)),
+    )
+
+    _run_config(monkeypatch, tmp_path, ["model", "potion-multilingual-128m", "save", "index_now"])
+
+    assert models_seen_while_indexing == ["bge-m3"]
+    assert _saved_model(tmp_path) == "potion-multilingual-128m"
+    assert (tmp_path / "file.db").is_file()
+
+
+def test_main__config_model_change_index_fails__keeps_old_model(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Keep the old model in the config file when indexing with the new model fails."""
+
+    def refuse(**kwargs):
+        raise ConnectionError("Failed to connect to Ollama.")
+
+    monkeypatch.setattr(commands, "run_indexing", refuse)
+
+    _run_config(monkeypatch, tmp_path, ["model", "potion-multilingual-128m", "save", "index_now"])
+
+    output = capsys.readouterr().out
+    assert _saved_model(tmp_path) == "bge-m3"
+    assert "Indexing stopped: Failed to connect to Ollama." in output
+    assert "The settings were not saved, so ostra still uses bge-m3." in output
+
+
+def test_main__config_model_change_ctrl_c_while_indexing__keeps_old_model(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+):
+    """Keep the old model in the config file when the user presses Ctrl-C while indexing with the new model."""
+
+    def interrupt(**kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(commands, "run_indexing", interrupt)
+
+    _run_config(monkeypatch, tmp_path, ["model", "potion-multilingual-128m", "save", "index_now"])
+
+    output = capsys.readouterr().out
+    assert _saved_model(tmp_path) == "bge-m3"
+    assert "Indexing stopped.\n" in output
+    assert "The settings were not saved, so ostra still uses bge-m3." in output
 
 
 def test_main__config_defaults_invalid_config__exits_with_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -473,21 +522,23 @@ def test_main__config_defaults_invalid_config__exits_with_error(monkeypatch: pyt
 
 
 def test_main__config_nothing_changed__asks_no_index_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    """Ask nothing and index nothing when no change needs indexing."""
-    prompter = _run_config_with_folder(monkeypatch, tmp_path, answer=True, changes=())
+    """Ask nothing about indexing and index nothing when no setting changed."""
+    prompter = _run_config(monkeypatch, tmp_path, ["save", "save"])
 
-    assert prompter.questions == []
+    assert prompter.finished()
+    assert "What now?" not in prompter.questions
     assert not (tmp_path / "file.db").exists()
 
 
-def test_main__config_index_declined__prints_reminder(
+def test_main__config_index_later__prints_reminder(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ):
-    """Remind the user to run ostra index, and warn that the new model finds nothing until then."""
-    _run_config_with_folder(monkeypatch, tmp_path, answer=False, changes=("model", "chunk size"))
+    """Save a model change, remind the user to run ostra index, and warn that the new model finds nothing yet."""
+    _run_config(monkeypatch, tmp_path, ["model", "potion-multilingual-128m", "save", "index_later"])
 
     output = capsys.readouterr().out
-    assert "Run ostra index to apply the changes (model, chunk size)." in output
+    assert _saved_model(tmp_path) == "potion-multilingual-128m"
+    assert "Run ostra index to apply the changes (model)." in output
     assert "Searches with the new model find nothing until then." in output
     assert not (tmp_path / "file.db").exists()
 
@@ -498,11 +549,20 @@ def test_main__config_invalid_environment_value__prints_message(
     """Print a short message instead of a traceback when an OSTRA_ variable is not valid."""
     monkeypatch.setenv("OSTRA_CHUNK_SIZE_TOKENS", "abc")
 
-    _run_config_with_folder(monkeypatch, tmp_path, answer=True)
+    _run_config(monkeypatch, tmp_path, ["database", False, str(tmp_path / "new.db"), "save", "index_now"])
 
     output = capsys.readouterr().out
     assert "Indexing stopped:" in output
     assert "Fix the problem, then run ostra index." in output
+
+
+def test_main__config_setting_argument__is_optional_and_checked():
+    """Accept one of the four settings as the shortcut of ostra config, and nothing else."""
+    assert build_parser().parse_args(["config", "chunks"]).setting == "chunks"
+    assert build_parser().parse_args(["config"]).setting is None
+
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["config", "nonsense"])
 
 
 def test_main__config_missing_directory__exits_with_status_2_and_saves_nothing(

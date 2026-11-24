@@ -117,6 +117,8 @@ class SetupContext:
     given_directories: list[Path] = field(default_factory=list)
     # The settings when the setup started, to tell which answers change the index.
     starting: SetupDraft | None = None
+    # Set by the save step: True when the user chose to index right after saving.
+    index_now: bool = False
 
     def index_changes(self) -> tuple[str, ...]:
         """Name the answers so far that need a run of ostra index."""
