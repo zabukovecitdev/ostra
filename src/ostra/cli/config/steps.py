@@ -1,4 +1,5 @@
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -43,11 +44,32 @@ INDEX_CHOICES = (
 )
 
 
+@dataclass(frozen=True)
+class ModelStatus:
+    """What the setup knows about one model, shown after its description."""
+
+    current: bool
+    indexed_files: int
+    # The Ollama state of the model. None for a model that runs in ostra.
+    ollama_state: str | None
+
+
 def choose_model(context: SetupContext) -> None:
-    """Ask which embedding model to use."""
-    choices = [Choice(spec.model_id, spec.model_id, _model_description(spec)) for spec in EMBEDDING_MODELS.values()]
-    context.draft.embedding_model = context.prompter.select(
-        "Which embedding model should ostra use?", choices, default=context.draft.embedding_model
+    """Ask which embedding model to use. Each choice tells whether it is current, indexed and on the Ollama server."""
+    draft = context.draft
+    indexed = context.services.indexed_files(draft.database_path)
+    ollama_models = _ollama_models(context)
+    starting_model = (context.starting or draft).embedding_model
+    choices = [
+        Choice(
+            spec.model_id,
+            spec.model_id,
+            _model_description(spec, _model_status(spec, starting_model, indexed, ollama_models)),
+        )
+        for spec in EMBEDDING_MODELS.values()
+    ]
+    draft.embedding_model = context.prompter.select(
+        "Which embedding model should ostra use?", choices, default=draft.embedding_model
     )
 
 
@@ -198,11 +220,63 @@ def _largest_chunk(spec: EmbeddingModelSpec) -> int:
     return spec.max_tokens - spec.special_tokens
 
 
-def _model_description(spec: EmbeddingModelSpec) -> str:
+def _model_description(spec: EmbeddingModelSpec, status: ModelStatus) -> str:
+    """Describe where a model runs, its languages, and its state: current, indexed and on the Ollama server."""
+    parts = [_where_and_notes(spec)]
+    if status.current:
+        parts.append("current")
+    parts.append(_index_text(status.indexed_files))
+    if status.ollama_state is not None:
+        parts.append(status.ollama_state)
+    return ", ".join(parts)
+
+
+def _where_and_notes(spec: EmbeddingModelSpec) -> str:
     """Describe where a model runs and which languages it knows."""
     where = "needs an Ollama server" if spec.provider is EmbeddingProviderName.OLLAMA else "runs in ostra on the CPU"
     notes = MODEL_NOTES.get(spec.model_id)
     return f"{where}, {notes}" if notes else where
+
+
+def _model_status(
+    spec: EmbeddingModelSpec, starting_model: str, indexed: dict[str, int], ollama_models: set[str] | None
+) -> ModelStatus:
+    """Collect the state of one model from the answers so far and the outside systems."""
+    ollama_state = _ollama_state(spec, ollama_models) if spec.provider is EmbeddingProviderName.OLLAMA else None
+    return ModelStatus(
+        current=spec.model_id == starting_model,
+        indexed_files=indexed.get(spec.model_id, 0),
+        ollama_state=ollama_state,
+    )
+
+
+def _index_text(files: int) -> str:
+    """Say how many files the index of a model holds."""
+    if files == 0:
+        return "not indexed yet"
+
+    return "1 file indexed" if files == 1 else f"{files} files indexed"
+
+
+def _ollama_state(spec: EmbeddingModelSpec, ollama_models: set[str] | None) -> str:
+    """Say whether the Ollama server has the model, or that the server does not answer."""
+    if ollama_models is None:
+        return "Ollama server not reachable"
+
+    return "on your Ollama server" if spec.provider_model in ollama_models else "not on your Ollama server"
+
+
+def _ollama_models(context: SetupContext) -> set[str] | None:
+    """List the models of the Ollama server, but only when a model of the registry runs on Ollama.
+
+    Returns:
+        The model names with tags, or None when the server does not answer or no model uses Ollama.
+    """
+    if not any(spec.provider is EmbeddingProviderName.OLLAMA for spec in EMBEDDING_MODELS.values()):
+        return None
+
+    address = context.draft.ollama_base_url or OllamaSettings().base_url
+    return context.services.ollama_models(address)
 
 
 def _ask_ollama_address(context: SetupContext) -> None:

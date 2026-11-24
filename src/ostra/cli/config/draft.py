@@ -4,7 +4,8 @@ from pathlib import Path
 
 from ostra.cli.config.prompter import Prompter
 from ostra.models.app_config import AppConfig
-from ostra.services.setup.ollama_check import OllamaStatus, check_ollama
+from ostra.repositories.sqlite.index_summary import indexed_document_counts
+from ostra.services.setup.ollama_check import OllamaStatus, check_ollama, list_ollama_models
 
 # The settings that decide what the index holds, with the name the user sees. A change to one of them needs a run
 # of ostra index. The Ollama address is not one of them: another server with the same model makes the same vectors.
@@ -103,6 +104,10 @@ class SetupServices:
     """The outside systems that the setup talks to. Tests replace them."""
 
     check_ollama: Callable[[str, str], OllamaStatus] = check_ollama
+    # The number of documents that each model index holds in the database file at the path.
+    indexed_files: Callable[[Path], dict[str, int]] = indexed_document_counts
+    # The models on the Ollama server at the address, or None when the server does not answer.
+    ollama_models: Callable[[str], set[str] | None] = list_ollama_models
 
 
 @dataclass

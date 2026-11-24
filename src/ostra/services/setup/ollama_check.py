@@ -4,7 +4,12 @@ import httpx
 from ollama import Client, ResponseError
 
 CONNECT_TIMEOUT_SECONDS = 5.0
+# Short, so that a user without an Ollama server does not wait for the setup to show the models.
+LIST_TIMEOUT_SECONDS = 1.0
 DEFAULT_TAG = ":latest"
+# The errors of a server that does not answer, or that answers with something other than an Ollama model list.
+# ValueError covers an answer that is not an Ollama model list, from a server that is not Ollama.
+UNREACHABLE_ERRORS = (ConnectionError, httpx.HTTPError, ResponseError, ValueError)
 
 
 @dataclass(frozen=True)
@@ -27,13 +32,27 @@ def check_ollama(base_url: str, provider_model: str) -> OllamaStatus:
         Whether the server answered, whether it has the model, and the error when it did not answer.
     """
     try:
-        response = Client(host=base_url, timeout=CONNECT_TIMEOUT_SECONDS).list()
-    # ValueError covers an answer that is not an Ollama model list, from a server that is not Ollama.
-    except (ConnectionError, httpx.HTTPError, ResponseError, ValueError) as error:
+        names = _fetch_model_names(base_url, CONNECT_TIMEOUT_SECONDS)
+    except UNREACHABLE_ERRORS as error:
         return OllamaStatus(reachable=False, error=str(error))
 
-    names = {_with_tag(model.model) for model in response.models if model.model}
     return OllamaStatus(reachable=True, model_present=_with_tag(provider_model) in names)
+
+
+def list_ollama_models(base_url: str, timeout: float = LIST_TIMEOUT_SECONDS) -> set[str] | None:
+    """List the models that an Ollama server has, with their tags.
+
+    Args:
+        base_url: The address of the server, for example http://localhost:11434.
+        timeout: The seconds to wait for the server before it counts as unreachable.
+
+    Returns:
+        The names with tags, such as bge-m3:latest. None when the server does not answer.
+    """
+    try:
+        return _fetch_model_names(base_url, timeout)
+    except UNREACHABLE_ERRORS:
+        return None
 
 
 def pull_command(provider_model: str) -> str:
@@ -46,6 +65,12 @@ def pull_command(provider_model: str) -> str:
         The ollama pull command, without the default tag.
     """
     return f"ollama pull {provider_model.removesuffix(DEFAULT_TAG)}"
+
+
+def _fetch_model_names(base_url: str, timeout: float) -> set[str]:
+    """Ask the server for its model list and return the names with tags. The client errors pass through."""
+    response = Client(host=base_url, timeout=timeout).list()
+    return {_with_tag(model.model) for model in response.models if model.model}
 
 
 def _with_tag(name: str) -> str:

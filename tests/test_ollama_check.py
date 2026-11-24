@@ -3,7 +3,7 @@ import pytest
 from ollama import ListResponse
 
 from ostra.services.setup import ollama_check
-from ostra.services.setup.ollama_check import check_ollama, pull_command
+from ostra.services.setup.ollama_check import check_ollama, list_ollama_models, pull_command
 
 
 class FakeClient:
@@ -12,9 +12,11 @@ class FakeClient:
     models: list[str] = []
     error: Exception | None = None
     hosts: list[str] = []
+    timeouts: list[float] = []
 
     def __init__(self, host: str, timeout: float):
         FakeClient.hosts.append(host)
+        FakeClient.timeouts.append(timeout)
 
     def list(self) -> ListResponse:
         if FakeClient.error is not None:
@@ -25,7 +27,7 @@ class FakeClient:
 @pytest.fixture(autouse=True)
 def fake_client(monkeypatch: pytest.MonkeyPatch):
     """Replace the Ollama client, so that no test calls a server."""
-    FakeClient.models, FakeClient.error, FakeClient.hosts = [], None, []
+    FakeClient.models, FakeClient.error, FakeClient.hosts, FakeClient.timeouts = [], None, [], []
     monkeypatch.setattr(ollama_check, "Client", FakeClient)
 
 
@@ -65,6 +67,32 @@ def test_check_ollama__server_down__reports_unreachable(error: Exception):
 
     assert (status.reachable, status.model_present) == (False, False)
     assert status.error
+
+
+def test_list_ollama_models__names_with_and_without_tag__returns_names_with_tags():
+    """Return the model names with tags, and add the latest tag to a name without one."""
+    FakeClient.models = ["bge-m3:latest", "mxbai-embed-large"]
+
+    assert list_ollama_models("http://server:11434") == {"bge-m3:latest", "mxbai-embed-large:latest"}
+    assert FakeClient.hosts == ["http://server:11434"]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [ConnectionError("refused"), httpx.ConnectTimeout("timed out"), ValueError("not an Ollama answer")],
+)
+def test_list_ollama_models__server_down__returns_none(error: Exception):
+    """Return None when the server does not answer, so that the caller can say it is not reachable."""
+    FakeClient.error = error
+
+    assert list_ollama_models("http://server:11434") is None
+
+
+def test_list_ollama_models__default_timeout__waits_one_second():
+    """Wait one second at most for the listing, so that a user without a server is not kept waiting."""
+    list_ollama_models("http://server:11434")
+
+    assert FakeClient.timeouts == [1.0]
 
 
 def test_pull_command__latest_tag__leaves_tag_out():

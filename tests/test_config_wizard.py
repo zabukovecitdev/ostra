@@ -1,6 +1,7 @@
 import json
 import os
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from ostra.services.setup.ollama_check import OllamaStatus
 KEEP = object()  # Answer with the default of the question.
 CANCEL = object()  # Press Ctrl-C at the question.
 MENU_QUESTION = "What do you want to change?"
+MODEL_QUESTION = "Which embedding model should ostra use?"
 
 
 class ScriptedPrompter(Prompter):
@@ -24,8 +26,11 @@ class ScriptedPrompter(Prompter):
         self._answers = list(answers)
         self.questions: list[str] = []
         self.errors: list[str] = []
+        # The choices of each select question, by its message.
+        self.choice_lists: dict[str, list[Choice]] = {}
 
     def select(self, message: str, choices: Sequence[Choice], default: str | None = None) -> str:
+        self.choice_lists[message] = list(choices)
         answer = self._next(message, default)
         assert answer in [choice.value for choice in choices]
         return str(answer)
@@ -57,8 +62,18 @@ class ScriptedPrompter(Prompter):
         return not self._answers
 
 
-def make_services(statuses: Sequence[OllamaStatus] = ()) -> tuple[SetupServices, list]:
-    """Build a fake Ollama check and a list that records its calls."""
+def make_services(
+    statuses: Sequence[OllamaStatus] = (),
+    indexed: dict[str, int] | None = None,
+    ollama_models: set[str] | None = None,
+) -> tuple[SetupServices, list]:
+    """Build fake outside systems and a list that records the Ollama checks.
+
+    Args:
+        statuses: The answers of the Ollama checks, in order.
+        indexed: The file counts of the model indexes. Empty by default.
+        ollama_models: The models that the Ollama server lists. None by default, which means no server answers.
+    """
     calls: list = []
     remaining = list(statuses)
 
@@ -66,7 +81,19 @@ def make_services(statuses: Sequence[OllamaStatus] = ()) -> tuple[SetupServices,
         calls.append(("check", url, model))
         return remaining.pop(0)
 
-    return SetupServices(check_ollama=check), calls
+    services = SetupServices(
+        check_ollama=check,
+        indexed_files=lambda database_path: dict(indexed or {}),
+        ollama_models=lambda url: None if ollama_models is None else set(ollama_models),
+    )
+    return services, calls
+
+
+def model_descriptions(config_path: Path, services: SetupServices) -> dict[str, str]:
+    """Open the model question, stop there and return the description of each model choice, by model ID."""
+    prompter = ScriptedPrompter([CANCEL])
+    run_setup(prompter, config_path, services)
+    return {choice.value: choice.description for choice in prompter.choice_lists[MODEL_QUESTION]}
 
 
 @pytest.fixture(autouse=True)
@@ -460,3 +487,73 @@ def test_run_setup__index_now_without_model_change__saves_before_caller_indexes(
 
     assert result is not None and result.index_now and not result.model_changed
     assert read(config_path)["directories"] == [str(notes), str(more)]
+
+
+def test_choose_model__default_model__marks_it_current_and_not_indexed(tmp_path: Path):
+    """Describe the default model as current, with no index yet, and the Ollama server as unreachable by default."""
+    descriptions = model_descriptions(tmp_path / "config.json", make_services()[0])
+
+    assert descriptions["potion-multilingual-128m"] == (
+        "runs in ostra on the CPU, 100+ languages, no setup needed, current, not indexed yet"
+    )
+
+
+def test_choose_model__configured_model__marks_only_that_model_current(tmp_path: Path):
+    """Mark the model of the config file as current, and no other model."""
+    config_path = tmp_path / "config.json"
+    write_config(config_path, {"embedding_model": "bge-m3"})
+
+    descriptions = model_descriptions(config_path, make_services()[0])
+
+    assert "current" in descriptions["bge-m3"]
+    assert "current" not in descriptions["mxbai-embed-large"]
+    assert "current" not in descriptions["potion-multilingual-128m"]
+
+
+def test_choose_model__indexed_models__shows_file_counts(tmp_path: Path):
+    """Show the number of files of each index, with the singular for one file and not indexed for none."""
+    services, _ = make_services(indexed={"potion-multilingual-128m": 312, "bge-m3": 1})
+
+    descriptions = model_descriptions(tmp_path / "config.json", services)
+
+    assert descriptions["potion-multilingual-128m"].endswith("current, 312 files indexed")
+    assert descriptions["bge-m3"].split(", ")[2] == "1 file indexed"
+    assert descriptions["mxbai-embed-large"].split(", ")[2] == "not indexed yet"
+
+
+def test_choose_model__ollama_has_models__says_which_are_on_server(tmp_path: Path):
+    """Say that the Ollama models the server has are on it, and the others are not."""
+    services, _ = make_services(ollama_models={"bge-m3:latest"})
+
+    descriptions = model_descriptions(tmp_path / "config.json", services)
+
+    assert descriptions["bge-m3"].endswith("not indexed yet, on your Ollama server")
+    assert descriptions["mxbai-embed-large"].endswith("not indexed yet, not on your Ollama server")
+
+
+def test_choose_model__ollama_unreachable__says_server_not_reachable(tmp_path: Path):
+    """Say that the Ollama server is not reachable for each Ollama model when it does not answer."""
+    descriptions = model_descriptions(tmp_path / "config.json", make_services()[0])
+
+    assert descriptions["bge-m3"].endswith("Ollama server not reachable")
+    assert descriptions["mxbai-embed-large"].endswith("Ollama server not reachable")
+
+
+def test_choose_model__ollama_address_in_config__lists_that_server(tmp_path: Path):
+    """List the models of the server that the config file names, and read the index counts of its database."""
+    config_path = tmp_path / "config.json"
+    database_path = tmp_path / "ostra.db"
+    write_config(config_path, {"ollama_base_url": "http://gpu-box:11434", "database_path": str(database_path)})
+    listed: list[str] = []
+    checked: list[Path] = []
+    base, _ = make_services()
+    services = replace(
+        base,
+        ollama_models=lambda url: listed.append(url) or set(),
+        indexed_files=lambda database_path: checked.append(database_path) or {},
+    )
+
+    model_descriptions(config_path, services)
+
+    assert listed == ["http://gpu-box:11434"]
+    assert checked == [database_path]

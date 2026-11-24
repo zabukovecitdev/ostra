@@ -54,8 +54,8 @@ class SqliteModelIndexRegistry:
             connection,
             model_id=spec.model_id,
             dimensions=spec.dimensions,
-            chunks_table=_table_name(chunks_table),
-            vectors_table=_table_name(vectors_table),
+            chunks_table=table_name(chunks_table),
+            vectors_table=table_name(vectors_table),
         )
 
     def _find_index(self, connection: sqlite3.Connection, model_id: str) -> tuple | None:
@@ -88,7 +88,7 @@ class SqliteModelIndexRegistry:
         for model_id, chunks_table in connection.execute(
             "SELECT model_id, chunks_table FROM model_indexes ORDER BY model_index_id"
         ).fetchall():
-            if connection.execute(f"SELECT 1 FROM {_table_name(chunks_table)} LIMIT 1").fetchone():
+            if connection.execute(f"SELECT 1 FROM {table_name(chunks_table)} LIMIT 1").fetchone():
                 model_ids.append(model_id)
 
         return model_ids
@@ -140,7 +140,7 @@ class SqliteModelIndexRegistry:
         return self._find_index(connection, spec.model_id)  # type: ignore[return-value]
 
 
-def _table_name(name: str) -> str:
+def table_name(name: str) -> str:
     """Check that a table name from the registry is a plain identifier, so that it is safe in SQL text.
 
     Args:

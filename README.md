@@ -251,7 +251,7 @@ make check            # lint, format check, type check and tests
 | `make check` | Run all of the checks above |
 | `make evals v2-potion-multilingual` | Run the retrieval evals of a run folder, here `evals/runs/v2-potion-multilingual`. `v1-baseline` needs Ollama |
 
-The suite runs 334 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra config` tests answer the questions with a scripted prompter.
+The suite runs 349 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra config` tests answer the questions with a scripted prompter.
 
 CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
 
