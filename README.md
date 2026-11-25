@@ -20,6 +20,8 @@ ostra is a local retrieval pipeline for personal text files. It splits each file
 
 Everything runs on your machine. No text leaves it.
 
+The changes of each version, and how to remove `ostra-daemon` from an earlier version, are in [CHANGELOG.md](CHANGELOG.md).
+
 ## Contents
 
 - [Features](#features)
@@ -29,7 +31,6 @@ Everything runs on your machine. No text leaves it.
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Usage](#usage)
-- [Upgrading from a version with ostra-daemon](#upgrading-from-a-version-with-ostra-daemon)
 - [Architecture](#architecture)
 - [Development](#development)
 - [Evals](#evals)
@@ -185,16 +186,6 @@ make run DIRECTORY=~/Documents/notes
 make reindex
 make search QUERY="transformer attention" LIMIT=3
 make help             # list every target
-```
-
-## Upgrading from a version with ostra-daemon
-
-Earlier versions had an `ostra-daemon` command that indexed in the background as a systemd user service. It has been removed: run `ostra index` after you change files or settings. If you installed the service, remove it, because systemd keeps restarting a command that no longer exists. Before you upgrade, run `ostra-daemon uninstall`. After an upgrade, run:
-
-```bash
-systemctl --user disable --now ostra-daemon.service
-rm ~/.config/systemd/user/ostra-daemon.service
-systemctl --user daemon-reload
 ```
 
 ## Architecture
