@@ -15,10 +15,10 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install uninstall run reindex search evals test lint format typecheck check hooks
+.PHONY: help install uninstall run reindex search evals test lint format typecheck complexity check hooks
 
 help: ## Show the available targets
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-11s %s\n", $$1, $$2}'
 
 install: ## Install the ostra commands for your user
 	uv tool install --editable --reinstall .
@@ -52,10 +52,14 @@ format: ## Format the code with ruff
 typecheck: ## Check the types with mypy
 	uv run mypy
 
-check: ## Run the lint, format check, type check and tests
+complexity: ## Check the cognitive complexity of each function with complexipy
+	uv run complexipy
+
+check: ## Run the lint, format check, type check, complexity check and tests
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run mypy
+	uv run complexipy
 	uv run pytest
 
 hooks: ## Install the git hooks (checks on commit, tests on push)

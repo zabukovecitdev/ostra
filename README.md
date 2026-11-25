@@ -227,7 +227,7 @@ The services depend on abstract classes (`DocumentSource`, `EmbeddingProvider`, 
 ```bash
 uv sync
 make hooks            # install git hooks: checks on commit, tests on push
-make check            # lint, format check, type check and tests
+make check            # lint, format check, type check, complexity check and tests
 ```
 
 | Command | Effect |
@@ -236,12 +236,13 @@ make check            # lint, format check, type check and tests
 | `make lint` | Check the code with ruff |
 | `make format` | Format the code with ruff |
 | `make typecheck` | Check the types with mypy |
-| `make check` | Run all of the checks above |
+| `make complexity` | Check the cognitive complexity of each function with complexipy. The limit is 15 |
+| `make check` | Run the lint, format check, type check, complexity check and tests |
 | `make evals v2-potion-multilingual` | Run the retrieval evals of a run folder, here `evals/runs/v2-potion-multilingual`. `v1-baseline` needs Ollama |
 
 The suite runs 306 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra init` tests answer the questions with a scripted prompter.
 
-CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
+CI runs the same checks as `make check` on Linux, macOS and Windows for each push to `master` and for each pull request.
 
 ## Evals
 
