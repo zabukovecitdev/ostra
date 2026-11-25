@@ -174,7 +174,8 @@ Run `ostra --help` or `ostra index --help` for the full list of options.
 When you run `ostra search` in a terminal, it lists each matching file once, nearest first, with its similarity and its number of matching chunks. The nearest chunk of the highlighted file shows below the list.
 
 - Press Enter to open the file in its default application. The list stays open, so you can open more files. Pick Quit or press Ctrl-C to stop.
-- When no application opens the file, ostra shows it in its folder in the file manager. When the file was deleted after indexing, ostra opens its folder.
+- When no application opens the file, ostra shows it in its folder in the file manager. This works on macOS and Windows. On Linux, ostra does not wait for `xdg-open`, so it cannot tell when no application opens the file.
+- When the file was deleted after indexing, ostra opens its folder.
 - On a server without a desktop, where `xdg-open` is missing, ostra prints the path instead.
 
 Files open with `click.launch`: `open` on macOS, the Windows shell on Windows and `xdg-open` on Linux. The output of `--json` and `--full`, and any output to a pipe or file, stays the plain chunk list. `--interactive` and `--no-interactive` choose the mode yourself.
@@ -203,7 +204,7 @@ src/ostra/
 │   ├── sources/           DocumentSource (abstract) and the file system source
 │   ├── embeddings/        EmbeddingProvider (abstract, applies query and document prefixes), the FastEmbed and Ollama providers
 │   └── tokenizers/        Tokenizer (abstract) and the tokenizer-file implementation
-├── repositories/          storage: SqliteChunkStore with one SqliteModelIndex for each embedding model
+├── repositories/          storage: the config file, the index interfaces, and SqliteChunkStore with one SqliteModelIndex for each model
 │   └── sqlite/            SQLite + sqlite-vec, versioned migrations, one index for each model
 ├── models/                data types and the model registry (one spec for each model)
 └── enums/, errors/, utils/, constants.py

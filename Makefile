@@ -32,7 +32,7 @@ run: ## Index the configured files, or DIRECTORY when set. RECURSIVE=1 scans sub
 reindex: ## Embed every chunk again, or DIRECTORY when set
 	uv run ostra index --reindex $(DIRECTORY_FLAG) $(RECURSIVE_FLAG)
 
-search: ## Print the stored chunks closest to QUERY, e.g. make search QUERY="solar system" LIMIT=3
+search: ## List the files closest to QUERY and open the one you pick, e.g. make search QUERY="solar system" LIMIT=3
 	@test -n "$(QUERY)" || { echo 'Set QUERY, e.g. make search QUERY="solar system"'; exit 1; }
 	uv run ostra search "$(QUERY)" --limit $(LIMIT)
 

@@ -11,7 +11,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the command line parser with the init, index and search commands.
 
     Returns:
-        The parser. Each command has its own options, and the database option works with both commands.
+        The parser. Each command has its own options. The --model and --database options work with index and search.
     """
     parser = argparse.ArgumentParser(
         prog="ostra",

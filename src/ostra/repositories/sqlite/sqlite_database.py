@@ -11,7 +11,7 @@ from ostra.utils.owner_only import ensure_owner_only_directory, open_owner_only_
 
 logger = logging.getLogger(__name__)
 
-# A reader waits this long for a writer lock before it fails.
+# A connection waits this long for a lock that another connection holds before it fails.
 BUSY_TIMEOUT_SECONDS = 30
 
 
