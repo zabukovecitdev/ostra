@@ -157,6 +157,7 @@ For the Ollama models, the server address comes from the `OLLAMA_BASE_URL` envir
 | `ostra init` | Set up the model, the Ollama connection, the folders and the indexing settings step by step |
 | `ostra init --defaults` | Save the current settings, or the defaults, without questions. Add `--directory PATH` to add a folder |
 | `ostra index` | Embed and store the new or changed chunks of the configured folders |
+| `ostra index PATH [PATH ...]` | Index the given folders instead of the configured ones |
 | `ostra index --directory PATH` | Index one or more folders instead of the configured ones. Repeat the option for more folders. |
 | `ostra index --reindex` | Embed every chunk again, even those already stored |
 | `ostra search "query"` | In a terminal, list the matching files and open the one you pick. See [Opening results](#opening-results) |
