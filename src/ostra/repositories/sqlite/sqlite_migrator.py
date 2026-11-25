@@ -9,7 +9,7 @@ from ostra.utils.owner_only import open_owner_only_file
 logger = logging.getLogger(__name__)
 
 SQLITE_MIGRATIONS_DIRECTORY = Path(__file__).parent / "migrations"
-# This migration replaces tables. A copy of the database is saved before it runs on a database with data.
+# This migration replaces tables. A copy of the database is saved before it runs on an existing database.
 BACKUP_BEFORE_MIGRATION = "006_create_model_indexes"
 CREATE_SCHEMA_MIGRATIONS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (

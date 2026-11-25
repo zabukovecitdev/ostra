@@ -20,6 +20,8 @@ ostra is a local retrieval pipeline for personal text files. It splits each file
 
 Everything runs on your machine. No text leaves it.
 
+The changes of each version, and how to remove `ostra-daemon` from an earlier version, are in [CHANGELOG.md](CHANGELOG.md).
+
 ## Contents
 
 - [Features](#features)
@@ -29,7 +31,6 @@ Everything runs on your machine. No text leaves it.
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
 - [Usage](#usage)
-- [Upgrading from a version with ostra-daemon](#upgrading-from-a-version-with-ostra-daemon)
 - [Architecture](#architecture)
 - [Development](#development)
 - [Evals](#evals)
@@ -156,6 +157,7 @@ For the Ollama models, the server address comes from the `OLLAMA_BASE_URL` envir
 | `ostra init` | Set up the model, the Ollama connection, the folders and the indexing settings step by step |
 | `ostra init --defaults` | Save the current settings, or the defaults, without questions. Add `--directory PATH` to add a folder |
 | `ostra index` | Embed and store the new or changed chunks of the configured folders |
+| `ostra index PATH [PATH ...]` | Index the given folders instead of the configured ones |
 | `ostra index --directory PATH` | Index one or more folders instead of the configured ones. Repeat the option for more folders. |
 | `ostra index --reindex` | Embed every chunk again, even those already stored |
 | `ostra search "query"` | In a terminal, list the matching files and open the one you pick. See [Opening results](#opening-results) |
@@ -173,7 +175,8 @@ Run `ostra --help` or `ostra index --help` for the full list of options.
 When you run `ostra search` in a terminal, it lists each matching file once, nearest first, with its similarity and its number of matching chunks. The nearest chunk of the highlighted file shows below the list.
 
 - Press Enter to open the file in its default application. The list stays open, so you can open more files. Pick Quit or press Ctrl-C to stop.
-- When no application opens the file, ostra shows it in its folder in the file manager. When the file was deleted after indexing, ostra opens its folder.
+- When no application opens the file, ostra shows it in its folder in the file manager. This works on macOS and Windows. On Linux, ostra does not wait for `xdg-open`, so it cannot tell when no application opens the file.
+- When the file was deleted after indexing, ostra opens its folder.
 - On a server without a desktop, where `xdg-open` is missing, ostra prints the path instead.
 
 Files open with `click.launch`: `open` on macOS, the Windows shell on Windows and `xdg-open` on Linux. The output of `--json` and `--full`, and any output to a pipe or file, stays the plain chunk list. `--interactive` and `--no-interactive` choose the mode yourself.
@@ -185,16 +188,6 @@ make run DIRECTORY=~/Documents/notes
 make reindex
 make search QUERY="transformer attention" LIMIT=3
 make help             # list every target
-```
-
-## Upgrading from a version with ostra-daemon
-
-Earlier versions had an `ostra-daemon` command that indexed in the background as a systemd user service. It has been removed: run `ostra index` after you change files or settings. If you installed the service, remove it, because systemd keeps restarting a command that no longer exists. Before you upgrade, run `ostra-daemon uninstall`. After an upgrade, run:
-
-```bash
-systemctl --user disable --now ostra-daemon.service
-rm ~/.config/systemd/user/ostra-daemon.service
-systemctl --user daemon-reload
 ```
 
 ## Architecture
@@ -212,7 +205,7 @@ src/ostra/
 │   ├── sources/           DocumentSource (abstract) and the file system source
 │   ├── embeddings/        EmbeddingProvider (abstract, applies query and document prefixes), the FastEmbed and Ollama providers
 │   └── tokenizers/        Tokenizer (abstract) and the tokenizer-file implementation
-├── repositories/          storage: SqliteChunkStore with one SqliteModelIndex for each embedding model
+├── repositories/          storage: the config file, the index interfaces, and SqliteChunkStore with one SqliteModelIndex for each model
 │   └── sqlite/            SQLite + sqlite-vec, versioned migrations, one index for each model
 ├── models/                data types and the model registry (one spec for each model)
 └── enums/, errors/, utils/, constants.py
@@ -227,7 +220,7 @@ The services depend on abstract classes (`DocumentSource`, `EmbeddingProvider`, 
 ```bash
 uv sync
 make hooks            # install git hooks: checks on commit, tests on push
-make check            # lint, format check, type check and tests
+make check            # lint, format check, type check, complexity check and tests
 ```
 
 | Command | Effect |
@@ -236,12 +229,13 @@ make check            # lint, format check, type check and tests
 | `make lint` | Check the code with ruff |
 | `make format` | Format the code with ruff |
 | `make typecheck` | Check the types with mypy |
-| `make check` | Run all of the checks above |
+| `make complexity` | Check the cognitive complexity of each function with complexipy. The limit is 15 |
+| `make check` | Run the lint, format check, type check, complexity check and tests |
 | `make evals v2-potion-multilingual` | Run the retrieval evals of a run folder, here `evals/runs/v2-potion-multilingual`. `v1-baseline` needs Ollama |
 
 The suite runs 306 tests. The tests call neither Ollama nor Hugging Face: they use fake embedding models and local tokenizer files. The `ostra init` tests answer the questions with a scripted prompter.
 
-CI runs the same checks on Linux, macOS and Windows for each push to `master` and for each pull request.
+CI runs the same checks as `make check` on Linux, macOS and Windows for each push to `master` and for each pull request.
 
 ## Evals
 
