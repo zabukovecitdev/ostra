@@ -239,7 +239,7 @@ CI runs the same checks as `make check` on Linux, macOS and Windows for each pus
 
 ## Evals
 
-`make evals <run>` indexes the dataset that `evals/runs/<run>/config.json` names into a new database in the run folder, asks every question of the dataset and writes the rank of the expected file to `output.json`. Datasets (`evals/datasets/`) hold the documents and questions and stay fixed; runs (`evals/runs/`) hold the settings and results, so runs on the same dataset compare side by side. See [evals/README.md](evals/README.md).
+`make evals <run>` indexes the dataset that `evals/runs/<run>/config.json` names into a new database in the run folder, asks every question of the dataset and writes the rank of the expected file to `output.json` and to a file of its own in `results/`, named after the start time and the git commit. Datasets (`evals/datasets/`) hold the documents and questions and stay fixed; runs (`evals/runs/`) hold the settings and results, so runs on the same dataset compare side by side. See [evals/README.md](evals/README.md).
 
 ## Performance
 
