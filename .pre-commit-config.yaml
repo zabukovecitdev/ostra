@@ -17,6 +17,12 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      - id: complexipy
+        name: complexipy
+        entry: uv run complexipy
+        language: system
+        types: [python]
+        pass_filenames: false
       - id: pytest
         name: pytest
         entry: uv run pytest -q

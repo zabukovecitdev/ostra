@@ -143,7 +143,7 @@ def _index_with_progress(
 
 
 def run_search(arguments: argparse.Namespace, config: AppConfig, session: IndexSession) -> None:
-    """Print the stored chunks that are closest to the query, nearest first.
+    """Search the index: list the matching files to open, or print the closest chunks, nearest first.
 
     Args:
         arguments: The parsed search arguments.

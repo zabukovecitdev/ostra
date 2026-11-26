@@ -60,7 +60,7 @@ Change one thing per run, so you know what moved the score.
 | `chunk_size_tokens` | Chunk size in tokens | default of the model (510) |
 | `chunk_overlap_tokens` | Tokens shared by two neighbor chunks | 50 |
 | `search_limit` | Chunks returned by each search. The expected file must be among them to get a rank | 50 |
-| `ollama_base_url` | Address of the Ollama server, for the Ollama models | `http://localhost:11434` |
+| `ollama_base_url` | Address of the Ollama server, for the Ollama models | `OLLAMA_BASE_URL`, or `http://localhost:11434` |
 
 A run always uses its own `ostra.db` and its dataset's `data/`, so it never touches your own index, even when
 `OSTRA_` environment variables are set.

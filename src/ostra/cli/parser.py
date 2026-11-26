@@ -11,7 +11,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the command line parser with the init, index and search commands.
 
     Returns:
-        The parser. Each command has its own options, and the database option works with both commands.
+        The parser. Each command has its own options. The --model and --database options work with index and search.
     """
     parser = argparse.ArgumentParser(
         prog="ostra",
@@ -88,8 +88,9 @@ def build_parser() -> argparse.ArgumentParser:
     search = commands.add_parser(
         "search",
         parents=[shared],
-        help="Print the stored chunks closest to a query.",
-        description="Print the stored chunks closest to a query, nearest first.",
+        help="Find the files closest to a query.",
+        description="Find the files closest to a query. In a terminal, list the matching files and open the one you "
+        "pick. Otherwise print the closest chunks, nearest first.",
     )
     search.set_defaults(handler=run_search, needs_index=True, create_index=False)
     search.add_argument("query", help="The text to search for.")
