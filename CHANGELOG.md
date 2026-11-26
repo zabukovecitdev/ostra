@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). ost
 
 ### Added
 
+- Every eval `output.json` records the version of the code that ran it: the git commit and branch, whether files that affect results had uncommitted changes (with a hash of them), and the ostra, Python and library versions. The report prints the commit. (#9)
 - `ostra search` in a terminal lists each matching file once, nearest first, and opens the file you pick in its default application. `--interactive` and `--no-interactive` choose the mode. Piped output, `--json` and `--full` print the chunk list as before. (#8)
 - `ostra init` sets up the embedding model, the Ollama server address, the folders, the subfolder setting, the chunk settings and the database step by step. It saves only when you confirm. `ostra init --defaults` saves without questions, for scripts. (#5)
 - After a change of the model, the folders, the subfolder setting, the chunk settings or the database, `ostra init` lists the changes and offers to run `ostra index`. (#6)
