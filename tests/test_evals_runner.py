@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from evals.runner import (
     dataset_fingerprint,
     load_settings,
     resolve_run_directory,
+    result_file_name,
     run_evals,
     setup,
     summarize,
@@ -179,3 +181,42 @@ def test_summarize_counts_hits_and_reciprocal_ranks():
     assert summary["hit_at_5"] == 0.75
     assert summary["mrr"] == pytest.approx((1 + 0.5 + 0 + 0.25) / 4, abs=1e-4)
     assert summary["not_found"] == 1
+
+
+STARTED = datetime(2026, 11, 26, 23, 12, 45, tzinfo=UTC)
+
+
+def test_run_evals_keeps_each_result_in_its_own_file(run_directory: Path, datasets_directory: Path):
+    def run_on(commit: str) -> dict:
+        system = {"commit": commit, "uncommitted_changes": False}
+        return run_evals(
+            run_directory,
+            build_model=build_keyword_model,
+            datasets_directory=datasets_directory,
+            read_code_version=lambda: system,
+        )
+
+    first = run_on("a" * 40)
+    second = run_on("b" * 40)
+
+    kept = {path.name.split("-", 1)[1]: json.loads(path.read_text()) for path in (run_directory / "results").iterdir()}
+    assert kept == {f"{'a' * 12}.json": first, f"{'b' * 12}.json": second}
+    assert json.loads((run_directory / "output.json").read_text()) == second
+
+
+def test_result_file_name_has_the_start_time_and_the_commit():
+    system = {"commit": "b7d489ac643be82a63e8f89feb0d82b6dfd5a7d3", "uncommitted_changes": False}
+
+    assert result_file_name(STARTED, system) == "20261126T231245Z-b7d489ac643b.json"
+
+
+def test_result_file_name_marks_uncommitted_changes():
+    system = {"commit": "b7d489ac643be82a63e8f89feb0d82b6dfd5a7d3", "uncommitted_changes": True}
+
+    assert result_file_name(STARTED, system) == "20261126T231245Z-b7d489ac643b-uncommitted.json"
+
+
+def test_result_file_name_without_a_commit():
+    system = {"commit": None, "uncommitted_changes": None}
+
+    assert result_file_name(STARTED, system) == "20261126T231245Z-unknown.json"

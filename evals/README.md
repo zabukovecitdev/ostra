@@ -26,6 +26,8 @@ evals/
       config.json               the dataset name and the settings
       ostra.db                  the database of the last run (written by the run, not committed)
       output.json               the results of the last run (written by the run)
+      results/                  the results of every run, one file each (written by the run)
+        20261126T231245Z-b7d489ac643b.json
 ```
 
 **Do not edit a dataset once runs use it.** Runs compare only when they used the same data. To change the documents
@@ -87,9 +89,23 @@ it documents the task and is ready for answer-generation evals later.
 2. Every file in the dataset's `data/` is chunked, embedded and stored in that database.
 3. Each question is embedded and searched. The chunks are grouped by file, so a file that has three matching
    chunks counts once, at the position of its best chunk.
-4. The results go to `output.json` in the run folder, and a short report is printed.
+4. The results go to `output.json` in the run folder and to a file of their own in its `results/` folder, and a short
+   report is printed.
 
-### output.json
+### output.json and results/
+
+`output.json` is replaced by every run, so it always holds the last result. Every run also writes the same content to
+a file in `results/` that no later run replaces. The name of the file is the start time (UTC), the first 12 characters
+of the git commit and, when files that affect the results had uncommitted changes, `-uncommitted`:
+
+| File | Meaning |
+|---|---|
+| `20261126T231245Z-b7d489ac643b.json` | Run on 26 November 2026 at 23:12:45 UTC, on a clean commit `b7d489ac643b` |
+| `20261126T231245Z-b7d489ac643b-uncommitted.json` | The same, but with uncommitted changes. Treat it as a draft |
+| `20261126T231245Z-unknown.json` | The commit is not known: not a git repository, or git is not installed |
+
+To compare versions of the code, compare two files of `results/`. Commit the files you want to keep. Two runs that
+start in the same second on the same commit replace each other's file.
 
 `system` holds the version of the code that ran (see [Which code ran a run](#which-code-ran-a-run)). `dataset` holds the dataset's `name`, `fingerprint`, and its number of `documents` and `tasks`. `config` holds the
 settings the run actually used. `indexing.seconds` is the time to embed and store all documents.

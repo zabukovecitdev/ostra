@@ -43,6 +43,10 @@ TASKS_FILE = "tasks.json"
 DATA_DIRECTORY = "data"
 DATABASE_FILE = "ostra.db"
 OUTPUT_FILE = "output.json"
+# The folder in a run folder that keeps the results of every run, each in its own file.
+RESULTS_DIRECTORY = "results"
+# The length of the commit hash in the name of a result file.
+RESULT_COMMIT_LENGTH = 12
 # The number of chunks each search returns. The expected document must be among them to get a rank.
 DEFAULT_SEARCH_LIMIT = 50
 # The ranks that the summary counts hits for, such as hit@1 and hit@3.
@@ -292,7 +296,7 @@ def run_evals(
     tasks = load_tasks(settings.dataset_directory)
     config = settings.app_config
     embedding_model = build_model(config)
-    started_at = datetime.now(UTC).isoformat(timespec="seconds")
+    started = datetime.now(UTC).replace(microsecond=0)
     system = read_code_version()
     database_path = setup(run_directory)
 
@@ -312,7 +316,7 @@ def run_evals(
 
     output = {
         "run": run_directory.name,
-        "started_at": started_at,
+        "started_at": started.isoformat(),
         "system": system,
         "dataset": {
             "name": settings.dataset_name,
@@ -330,9 +334,44 @@ def run_evals(
         "summary": summarize(results),
         "tasks": [asdict(result) for result in results],
     }
-    output_path = run_directory / OUTPUT_FILE
-    output_path.write_text(json.dumps(output, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    write_output(run_directory, output, result_file_name(started, system))
     return output
+
+
+def result_file_name(started: datetime, system: dict) -> str:
+    """Name the file that keeps the result of one run: the start time, the commit and a mark for uncommitted changes.
+
+    Args:
+        started: When the run started, in UTC.
+        system: The system block of output.json.
+
+    Returns:
+        A name such as 20261126T231245Z-b7d489ac643b.json, with -uncommitted before the extension when files that
+        affect the results had uncommitted changes, or 20261126T231245Z-unknown.json when the commit is not known.
+    """
+    commit = system.get("commit")
+    version = commit[:RESULT_COMMIT_LENGTH] if commit else "unknown"
+    mark = "-uncommitted" if system.get("uncommitted_changes") else ""
+    return f"{started.strftime('%Y%m%dT%H%M%SZ')}-{version}{mark}.json"
+
+
+def write_output(run_directory: Path, output: dict, file_name: str) -> Path:
+    """Write the result of a run twice: as output.json, which the next run replaces, and in results/ for good.
+
+    Args:
+        run_directory: The run folder.
+        output: The content of output.json.
+        file_name: The name of the file in the results folder.
+
+    Returns:
+        The location of the file in the results folder.
+    """
+    text = json.dumps(output, indent=2, ensure_ascii=False) + "\n"
+    (run_directory / OUTPUT_FILE).write_text(text, encoding="utf-8")
+    result_path = run_directory / RESULTS_DIRECTORY / file_name
+    result_path.parent.mkdir(exist_ok=True)
+    result_path.write_text(text, encoding="utf-8")
+    return result_path
 
 
 def print_report(output: dict) -> None:
@@ -366,7 +405,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(str(error))
 
     print_report(output)
-    print(f"Wrote {run_directory / OUTPUT_FILE}")
+    file_name = result_file_name(datetime.fromisoformat(output["started_at"]), output["system"])
+    print(f"Wrote {run_directory / OUTPUT_FILE} and {run_directory / RESULTS_DIRECTORY / file_name}")
 
 
 if __name__ == "__main__":
